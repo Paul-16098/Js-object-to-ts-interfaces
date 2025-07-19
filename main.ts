@@ -209,20 +209,24 @@ class ReturnHandler
   implements EventHandlerBase<EventHandlerGetTypeReturnArgType>
 {
   on = EventName.GetTypeReturn;
+  rep_list: string[][];
+  constructor(rep_list: Array<Array<string>> = []) {
+    this.rep_list = rep_list;
+  }
   do(
     env: EventHandlerEnvType,
     arg: EventHandlerGetTypeReturnArgType
   ): EventHandlerReturn {
-    return [
-      FnActions.SetReturn,
-      arg.Return.replaceAll(
-        "$:JQueryStatic;$:() => unknown",
-        "$:JQueryStatic"
-      ).replaceAll(
-        "jQuery:JQueryStatic;jQuery:() => unknown",
-        "jQuery:JQueryStatic"
-      ),
-    ];
+    for (const rep of this.rep_list) {
+      if (rep.length !== 2) {
+        console.warn("ts:rep_list error", rep);
+        continue;
+      }
+      arg.Return = arg.Return.replaceAll(rep[0], rep[1]);
+      console.debug("ts:rep", rep[0], "=>", rep[1]);
+    }
+
+    return [FnActions.SetReturn, arg.Return];
   }
 }
 
@@ -276,8 +280,28 @@ class GetTypeGenerator {
       "speechSynthesis",
       GetTypeGenerator.name,
     ]),
-    new ReturnHandler(),
+    new ReturnHandler([
+      ["$:JQueryStatic;$:() => unknown", "$:JQueryStatic"],
+      ["jQuery:JQueryStatic;jQuery:() => unknown", "jQuery:JQueryStatic"],
+    ]),
   ];
+  /**
+   * 遞迴深度計數器
+   * @remarks This is used to track the depth of recursion during the type generation process.
+   */
+  private depth!: number;
+  /**
+   * 屬性路徑
+   */
+  private path!: Array<string>;
+  /**
+   * 重置計數器和路徑
+   * @remarks This method resets the depth counter and the path array to their initial state.
+   */
+  private reset(): void {
+    this.depth = 0;
+    this.path = ["The Object"];
+  }
   public get EventHandlerList(): EventHandlerBase<EventHandlerArgType>[] {
     return this._EventHandlerList;
   }
@@ -312,27 +336,22 @@ class GetTypeGenerator {
    */
   constructor(printHint: boolean = true) {
     this.printHint = printHint;
+    this.reset();
   }
 
   /**
    * 生成 TypeScript 介面字串
    * @param obj 目標物件
    * @param InterfaceName 介面名稱
-   * @param depth 遞迴深度
-   * @param path 屬性路徑
    * @returns TypeScript 介面字串
    */
-  public generate(
-    obj: GetType_obj_type,
-    InterfaceName?: string,
-    depth: number = 0,
-    path: Array<string> = ["The Object"]
-  ): string {
-    console.groupCollapsed(path[path.length - 1]);
+  public generate(obj: GetType_obj_type, InterfaceName?: string): string {
+    this.depth++;
+    console.groupCollapsed(this.path[this.path.length - 1]);
     let safeWindow: (Window & { [key: string]: any }) | null = null;
     let interfaceStr = "";
     try {
-      console.log("ts:", obj, "depth:", depth, "path:", path);
+      console.log("ts:", obj, "depth:", this.depth, "path:", this.path);
       if (obj === null) return "null";
       if (typeof obj !== "function" && typeof obj !== "object")
         return typeof obj;
@@ -358,7 +377,7 @@ class GetTypeGenerator {
         }
       }
       // 處理物件
-      if (depth === 0) {
+      if (this.depth === 0) {
         interfaceStr = `/** form ${obj.toString()} */\ninterface ${
           InterfaceName ?? "RootType"
         } {`;
@@ -367,7 +386,7 @@ class GetTypeGenerator {
       }
       let isArray = false;
       let obj_isWindow = obj == window || obj == document || obj == self;
-      if (depth === 0 && obj_isWindow) {
+      if (this.depth === 0 && obj_isWindow) {
         safeWindow = open();
       }
       for (const key in obj) {
@@ -379,8 +398,8 @@ class GetTypeGenerator {
             EventName.GetTypeTop,
             obj,
             InterfaceName,
-            depth,
-            path,
+            this.depth,
+            this.path,
             { key: key, element: element }
           )) {
             if (Data === FnActions.None) continue;
@@ -407,13 +426,8 @@ class GetTypeGenerator {
             console.debug("ts:continue", element);
             continue;
           }
-          path.push(key);
-          const ElementType = this.generate(
-            element,
-            undefined,
-            depth + 1,
-            path
-          );
+          this.path.push(key);
+          const ElementType = this.generate(element);
           if (ElementType === "native-code") continue;
           tmp_interfaceStr += `${key}:${ElementType};${
             this.printHint ? "/** `" + String(element) + "` */" : ""
@@ -434,14 +448,15 @@ class GetTypeGenerator {
       EventName.GetTypeReturn,
       obj,
       InterfaceName,
-      depth,
-      path,
+      this.depth,
+      this.path,
       { Return: interfaceStr }
     )) {
       if (!Array.isArray(Data) || Data[0] !== FnActions.SetReturn) continue;
       Data = Data as [FnActions.SetReturn, string];
       interfaceStr = Data[1];
     }
+    this.reset();
     return interfaceStr;
   }
 

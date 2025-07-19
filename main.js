@@ -74,11 +74,20 @@ class SkipProperties {
  */
 class ReturnHandler {
     on = 1 /* EventName.GetTypeReturn */;
+    rep_list;
+    constructor(rep_list = []) {
+        this.rep_list = rep_list;
+    }
     do(env, arg) {
-        return [
-            3 /* FnActions.SetReturn */,
-            arg.Return.replaceAll("$:JQueryStatic;$:() => unknown", "$:JQueryStatic").replaceAll("jQuery:JQueryStatic;jQuery:() => unknown", "jQuery:JQueryStatic"),
-        ];
+        for (const rep of this.rep_list) {
+            if (rep.length !== 2) {
+                console.warn("ts:rep_list error", rep);
+                continue;
+            }
+            arg.Return = arg.Return.replaceAll(rep[0], rep[1]);
+            console.debug("ts:rep", rep[0], "=>", rep[1]);
+        }
+        return [3 /* FnActions.SetReturn */, arg.Return];
     }
 }
 /**
@@ -131,8 +140,28 @@ class GetTypeGenerator {
             "speechSynthesis",
             GetTypeGenerator.name,
         ]),
-        new ReturnHandler(),
+        new ReturnHandler([
+            ["$:JQueryStatic;$:() => unknown", "$:JQueryStatic"],
+            ["jQuery:JQueryStatic;jQuery:() => unknown", "jQuery:JQueryStatic"],
+        ]),
     ];
+    /**
+     * 遞迴深度計數器
+     * @remarks This is used to track the depth of recursion during the type generation process.
+     */
+    depth;
+    /**
+     * 屬性路徑
+     */
+    path;
+    /**
+     * 重置計數器和路徑
+     * @remarks This method resets the depth counter and the path array to their initial state.
+     */
+    reset() {
+        this.depth = 0;
+        this.path = ["The Object"];
+    }
     get EventHandlerList() {
         return this._EventHandlerList;
     }
@@ -164,21 +193,21 @@ class GetTypeGenerator {
      */
     constructor(printHint = true) {
         this.printHint = printHint;
+        this.reset();
     }
     /**
      * 生成 TypeScript 介面字串
      * @param obj 目標物件
      * @param InterfaceName 介面名稱
-     * @param depth 遞迴深度
-     * @param path 屬性路徑
      * @returns TypeScript 介面字串
      */
-    generate(obj, InterfaceName, depth = 0, path = ["The Object"]) {
-        console.groupCollapsed(path[path.length - 1]);
+    generate(obj, InterfaceName) {
+        this.depth++;
+        console.groupCollapsed(this.path[this.path.length - 1]);
         let safeWindow = null;
         let interfaceStr = "";
         try {
-            console.log("ts:", obj, "depth:", depth, "path:", path);
+            console.log("ts:", obj, "depth:", this.depth, "path:", this.path);
             if (obj === null)
                 return "null";
             if (typeof obj !== "function" && typeof obj !== "object")
@@ -201,7 +230,7 @@ class GetTypeGenerator {
                 }
             }
             // 處理物件
-            if (depth === 0) {
+            if (this.depth === 0) {
                 interfaceStr = `/** form ${obj.toString()} */\ninterface ${InterfaceName ?? "RootType"} {`;
             }
             else {
@@ -209,7 +238,7 @@ class GetTypeGenerator {
             }
             let isArray = false;
             let obj_isWindow = obj == window || obj == document || obj == self;
-            if (depth === 0 && obj_isWindow) {
+            if (this.depth === 0 && obj_isWindow) {
                 safeWindow = open();
             }
             for (const key in obj) {
@@ -217,7 +246,7 @@ class GetTypeGenerator {
                     const element = obj[key];
                     let tmp_interfaceStr = "";
                     let needContinue = false;
-                    for (let Data of this.runHandlers(0 /* EventName.GetTypeTop */, obj, InterfaceName, depth, path, { key: key, element: element })) {
+                    for (let Data of this.runHandlers(0 /* EventName.GetTypeTop */, obj, InterfaceName, this.depth, this.path, { key: key, element: element })) {
                         if (Data === 4 /* FnActions.None */)
                             continue;
                         if (Data === 0 /* FnActions.Continue */) {
@@ -245,8 +274,8 @@ class GetTypeGenerator {
                         console.debug("ts:continue", element);
                         continue;
                     }
-                    path.push(key);
-                    const ElementType = this.generate(element, undefined, depth + 1, path);
+                    this.path.push(key);
+                    const ElementType = this.generate(element);
                     if (ElementType === "native-code")
                         continue;
                     tmp_interfaceStr += `${key}:${ElementType};${this.printHint ? "/** `" + String(element) + "` */" : ""}`;
@@ -267,12 +296,13 @@ class GetTypeGenerator {
                 safeWindow.close();
         }
         console.groupEnd();
-        for (let Data of this.runHandlers(1 /* EventName.GetTypeReturn */, obj, InterfaceName, depth, path, { Return: interfaceStr })) {
+        for (let Data of this.runHandlers(1 /* EventName.GetTypeReturn */, obj, InterfaceName, this.depth, this.path, { Return: interfaceStr })) {
             if (!Array.isArray(Data) || Data[0] !== 3 /* FnActions.SetReturn */)
                 continue;
             Data = Data;
             interfaceStr = Data[1];
         }
+        this.reset();
         return interfaceStr;
     }
     /**

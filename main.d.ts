@@ -140,6 +140,8 @@ declare class SkipProperties implements EventHandlerBase<EventHandlerGetTypeTopA
  */
 declare class ReturnHandler implements EventHandlerBase<EventHandlerGetTypeReturnArgType> {
     on: EventName;
+    rep_list: string[][];
+    constructor(rep_list?: Array<Array<string>>);
     do(env: EventHandlerEnvType, arg: EventHandlerGetTypeReturnArgType): EventHandlerReturn;
 }
 /**
@@ -166,6 +168,20 @@ declare class GetTypeGenerator {
      * The list of event handlers.
      */
     private _EventHandlerList;
+    /**
+     * 遞迴深度計數器
+     * @remarks This is used to track the depth of recursion during the type generation process.
+     */
+    private depth;
+    /**
+     * 屬性路徑
+     */
+    private path;
+    /**
+     * 重置計數器和路徑
+     * @remarks This method resets the depth counter and the path array to their initial state.
+     */
+    private reset;
     get EventHandlerList(): EventHandlerBase<EventHandlerArgType>[];
     /**
      * @param handlerList - The list of event handlers to set.
@@ -191,11 +207,9 @@ declare class GetTypeGenerator {
      * 生成 TypeScript 介面字串
      * @param obj 目標物件
      * @param InterfaceName 介面名稱
-     * @param depth 遞迴深度
-     * @param path 屬性路徑
      * @returns TypeScript 介面字串
      */
-    generate(obj: GetType_obj_type, InterfaceName?: string, depth?: number, path?: Array<string>): string;
+    generate(obj: GetType_obj_type, InterfaceName?: string): string;
     /**
      * 策略執行器：根據事件執行所有策略
      * @param EventName 事件名稱

@@ -12,7 +12,8 @@
     "module": "commonjs",
     "outDir": ".",
     "strict": true,
-    "declaration": true
+    "declaration": true,
+    "noImplicitAny": true
   },
   "exclude": ["node_modules", "**/node_modules/*"]
 }

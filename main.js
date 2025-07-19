@@ -1,10 +1,5 @@
 "use strict";
 /**
- * TypeScript Interface 生成器
- * 將 JS 對象自動轉換為 TypeScript 介面定義。
- * 支援遞迴解析、策略擴展、特殊鍵跳過、函數類型推斷等。
- */
-/**
  * 跳過循環引用
  * @see {@link EventHandlerBase}
  * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}

@@ -14,10 +14,27 @@
  * @property {number} None - No action.
  */
 declare const enum FnActions {
+    /**
+     * Continue execution.
+     */
     Continue = 0,
+    /**
+     * Return from the function.
+     */
     Return = 1,
+    /**
+     * Evaluate an expression.
+     * This action allows for dynamic evaluation of expressions during the event handling.
+     */
     Eval = 2,
+    /**
+     * Set a return value.
+     */
     SetReturn = 3,
+    /**
+     * No action.
+     * This action indicates that no further processing is needed for the event.
+     */
     None = 4
 }
 /**
@@ -30,19 +47,20 @@ declare const enum FnActions {
  * @property {string} GetTypeTop - Represents the event for retrieving the top type.
  * @property {string} GetTypeReturn - Represents the event for retrieving the return type.
  */
-declare enum EventName {
-    GetTypeTop = "GetTypeTop",
-    GetTypeReturn = "GetTypeReturn"
+declare const enum EventName {
+    /**
+     * Represents the event for retrieving the top type.
+     */
+    GetTypeTop = 0,
+    /**
+     * Represents the event for retrieving the return type.
+     */
+    GetTypeReturn = 1
 }
 /**
  * Represents the possible return types for an event handler function.
  *
- * - `FnActions.Continue`: Indicates that the event handler should continue processing.
- * - `FnActions.None`: Indicates that no action should be taken.
- * - A tuple containing one of `FnActions.Return`, `FnActions.Eval`, or `FnActions.SetReturn` and a `string` value:
- *   - `FnActions.Return`: Indicates a return action with an associated string value.
- *   - `FnActions.Eval`: Indicates an evaluation action with an associated string value.
- *   - `FnActions.SetReturn`: Indicates setting a return value with an associated string value.
+ * @see {@link FnActions}
  */
 type EventHandlerReturn = FnActions.Continue | FnActions.None | [FnActions.Return | FnActions.Eval | FnActions.SetReturn, string];
 /**
@@ -50,90 +68,79 @@ type EventHandlerReturn = FnActions.Continue | FnActions.None | [FnActions.Retur
  */
 type GetType_obj_type = null | number | string | bigint | boolean | symbol | undefined | Function | object;
 /**
+ * Event handler environment type.
+ */
+type EventHandlerEnvType = {
+    obj: GetType_obj_type;
+    InterfaceName: string | undefined;
+    depth: number;
+    path: Array<string>;
+};
+/**
+ * Event handler argument type for retrieving the return type.
+ */
+type EventHandlerGetTypeReturnArgType = {
+    Return: string;
+};
+/**
+ * Event handler argument type for retrieving the top type.
+ */
+type EventHandlerGetTypeTopArgType = {
+    key: string;
+    element: object[keyof object];
+};
+/**
+ * Event handler argument type for various event handlers.
+ *
+ * @see {@link EventHandlerGetTypeReturnArgType}
+ * @see {@link EventHandlerGetTypeTopArgType}
+ */
+type EventHandlerArgType = EventHandlerGetTypeReturnArgType | EventHandlerGetTypeTopArgType;
+/**
  * 策略介面：可根據事件擴展多種處理
  */
-interface EventHandlerBase {
+interface EventHandlerBase<EventArg extends EventHandlerArgType> {
     on: EventName;
-    do(this: {
-        ver: {
-            obj: GetType_obj_type;
-            InterfaceName: string | undefined;
-            depth: number;
-            path: Array<string>;
-        };
-    }, arg: {
-        key: string;
-        element: object[keyof object];
-    } | {
-        Return: string;
-    }): EventHandlerReturn;
+    do(env: EventHandlerEnvType, arg: EventArg): EventHandlerReturn;
 }
 /**
  * 跳過循環引用
+ * @see {@link EventHandlerBase}
+ * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
  */
-declare class SkipLoopRef implements EventHandlerBase {
+declare class SkipLoopRef implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
     on: EventName;
-    do(this: {
-        ver: {
-            obj: GetType_obj_type;
-            InterfaceName: string | undefined;
-            depth: number;
-            path: Array<string>;
-        };
-    }, arg: {
-        key: string;
-        element: object[keyof object];
-    }): EventHandlerReturn;
+    do(env: EventHandlerEnvType, arg: EventHandlerGetTypeTopArgType): EventHandlerReturn;
 }
 /**
  * 處理特殊鍵名（jQuery, $）
+ * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
+ * @see {@link EventHandlerBase}
  */
-declare class JQueryHandler implements EventHandlerBase {
+declare class JQueryHandler implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
     on: EventName;
-    do(this: {
-        ver: {
-            obj: GetType_obj_type;
-            InterfaceName: string | undefined;
-            depth: number;
-            path: Array<string>;
-        };
-    }, arg: {
-        key: string;
-        element: object[keyof object];
-    }): EventHandlerReturn;
+    do(env: EventHandlerEnvType, arg: EventHandlerGetTypeTopArgType): EventHandlerReturn;
 }
 /**
  * 跳過瀏覽器全域物件
+ * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
+ * @see {@link EventHandlerBase}
  */
-declare class SkipWindowProperties implements EventHandlerBase {
+declare class SkipProperties implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
     on: EventName;
-    do(this: {
-        ver: {
-            obj: GetType_obj_type;
-            InterfaceName: string | undefined;
-            depth: number;
-            path: Array<string>;
-        };
-    }, arg: {
-        key: string;
-        element: object[keyof object];
-    }): EventHandlerReturn;
+    private _skipKeys;
+    get skipKeys(): string[];
+    constructor(skipKeys: string[]);
+    do(env: EventHandlerEnvType, arg: EventHandlerGetTypeTopArgType): EventHandlerReturn;
 }
 /**
  * 處理最終返回值（後處理）
+ * @implements {EventHandlerBase<EventHandlerGetTypeReturnArgType>}
+ * @see {@link EventHandlerBase}
  */
-declare class ReturnHandler implements EventHandlerBase {
+declare class ReturnHandler implements EventHandlerBase<EventHandlerGetTypeReturnArgType> {
     on: EventName;
-    do(this: {
-        ver: {
-            obj: GetType_obj_type;
-            InterfaceName: string | undefined;
-            depth: number;
-            path: Array<string>;
-        };
-    }, arg: {
-        Return: string;
-    }): EventHandlerReturn;
+    do(env: EventHandlerEnvType, arg: EventHandlerGetTypeReturnArgType): EventHandlerReturn;
 }
 /**
  * The `GetTypeGenerator` class provides functionality to generate TypeScript interface definitions
@@ -155,10 +162,25 @@ declare class ReturnHandler implements EventHandlerBase {
  * @public
  */
 declare class GetTypeGenerator {
+    /**
+     * The list of event handlers.
+     */
     private _EventHandlerList;
-    get EventHandlerList(): EventHandlerBase[];
-    set EventHandlerList(value: EventHandlerBase[]);
-    AddEventHandler(handler: EventHandlerBase): void;
+    get EventHandlerList(): EventHandlerBase<EventHandlerArgType>[];
+    /**
+     * @param handlerList - The list of event handlers to set.
+     */
+    set EventHandlerList(handlerList: EventHandlerBase<EventHandlerArgType>[]);
+    /**
+     * @param handler - The event handler to add.
+     * @remarks This will add the handler to the list of event handlers.
+     * @returns The updated list of event handlers.
+     */
+    AddEventHandler(handler: EventHandlerBase<EventHandlerArgType>): EventHandlerBase<EventHandlerArgType>[];
+    /**
+     * Determines whether to print hints for unknown types.
+     * @remarks If `true`, hints will be printed for types that cannot be determined.
+     */
     private printHint;
     /**
      * Creates an instance of the class.
@@ -176,6 +198,12 @@ declare class GetTypeGenerator {
     generate(obj: GetType_obj_type, InterfaceName?: string, depth?: number, path?: Array<string>): string;
     /**
      * 策略執行器：根據事件執行所有策略
+     * @param EventName 事件名稱
+     * @param obj 目標物件
+     * @param InterfaceName 介面名稱
+     * @param depth 遞迴深度
+     * @param path 屬性路徑
+     * @param arg 事件處理器參數
      */
     private runHandlers;
 }

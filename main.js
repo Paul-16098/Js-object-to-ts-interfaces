@@ -5,28 +5,15 @@
  * 支援遞迴解析、策略擴展、特殊鍵跳過、函數類型推斷等。
  */
 /**
- * Enumeration of event names used in the application.
- *
- * @remarks
- * This enum defines the possible event names that can be emitted or handled.
- *
- * @enum {string}
- * @property {string} GetTypeTop - Represents the event for retrieving the top type.
- * @property {string} GetTypeReturn - Represents the event for retrieving the return type.
- */
-var EventName;
-(function (EventName) {
-    EventName["GetTypeTop"] = "GetTypeTop";
-    EventName["GetTypeReturn"] = "GetTypeReturn";
-})(EventName || (EventName = {}));
-/**
  * 跳過循環引用
+ * @see {@link EventHandlerBase}
+ * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
  */
 class SkipLoopRef {
-    on = EventName.GetTypeTop;
-    do(arg) {
-        if (arg.element === this.ver.obj) {
-            console.warn("ts:ref=>ref", arg.element, this.ver.path);
+    on = 0 /* EventName.GetTypeTop */;
+    do(env, arg) {
+        if (arg.element === env.obj) {
+            console.warn("ts:ref=>ref", arg.element, env.path);
             return 0 /* FnActions.Continue */;
         }
         return 4 /* FnActions.None */;
@@ -34,11 +21,13 @@ class SkipLoopRef {
 }
 /**
  * 處理特殊鍵名（jQuery, $）
+ * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
+ * @see {@link EventHandlerBase}
  */
 class JQueryHandler {
-    on = EventName.GetTypeTop;
-    do(arg) {
-        if (this.ver.depth === 0) {
+    on = 0 /* EventName.GetTypeTop */;
+    do(env, arg) {
+        if (env.depth === 0) {
             if (arg.key === "jQuery") {
                 return [2 /* FnActions.Eval */, "appt+='jQuery:JQueryStatic;'"];
             }
@@ -53,41 +42,25 @@ class JQueryHandler {
 }
 /**
  * 跳過瀏覽器全域物件
+ * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
+ * @see {@link EventHandlerBase}
  */
-class SkipWindowProperties {
-    on = EventName.GetTypeTop;
-    do(arg) {
-        const skipKeys = [
-            "document",
-            "location",
-            "history",
-            "window",
-            "navigation",
-            "self",
-            "locationbar",
-            "scrollbars",
-            "customElements",
-            "menubar",
-            "personalbar",
-            "statusbar",
-            "toolbar",
-            "opener",
-            "navigator",
-            "external",
-            "screen",
-            "visualViewport",
-            "clientInformation",
-            "cookieStore",
-            "speechSynthesis",
-            ts.name,
-            GetTypeGenerator.name,
-        ];
-        for (const a_element of skipKeys) {
+class SkipProperties {
+    on = 0 /* EventName.GetTypeTop */;
+    _skipKeys;
+    get skipKeys() {
+        return this._skipKeys;
+    }
+    constructor(skipKeys) {
+        this._skipKeys = Array.from(new Set(skipKeys));
+    }
+    do(env, arg) {
+        for (const a_element of this._skipKeys) {
             if (window[a_element] == arg.element) {
                 return 0 /* FnActions.Continue */;
             }
         }
-        if (skipKeys.includes(arg.key)) {
+        if (this._skipKeys.includes(arg.key)) {
             console.debug("ts:skip", arg.key);
             return 0 /* FnActions.Continue */;
         }
@@ -96,10 +69,12 @@ class SkipWindowProperties {
 }
 /**
  * 處理最終返回值（後處理）
+ * @implements {EventHandlerBase<EventHandlerGetTypeReturnArgType>}
+ * @see {@link EventHandlerBase}
  */
 class ReturnHandler {
-    on = EventName.GetTypeReturn;
-    do(arg) {
+    on = 1 /* EventName.GetTypeReturn */;
+    do(env, arg) {
         return [
             3 /* FnActions.SetReturn */,
             arg.Return.replaceAll("$:JQueryStatic;$:() => unknown", "$:JQueryStatic").replaceAll("jQuery:JQueryStatic;jQuery:() => unknown", "jQuery:JQueryStatic"),
@@ -126,21 +101,62 @@ class ReturnHandler {
  * @public
  */
 class GetTypeGenerator {
+    /**
+     * The list of event handlers.
+     */
     _EventHandlerList = [
         new SkipLoopRef(),
         new JQueryHandler(),
-        new SkipWindowProperties(),
+        new SkipProperties([
+            "document",
+            "location",
+            "history",
+            "window",
+            "navigation",
+            "self",
+            "locationbar",
+            "scrollbars",
+            "customElements",
+            "menubar",
+            "personalbar",
+            "statusbar",
+            "toolbar",
+            "opener",
+            "navigator",
+            "external",
+            "screen",
+            "visualViewport",
+            "clientInformation",
+            "cookieStore",
+            "speechSynthesis",
+            GetTypeGenerator.name,
+        ]),
         new ReturnHandler(),
     ];
     get EventHandlerList() {
         return this._EventHandlerList;
     }
-    set EventHandlerList(value) {
-        this._EventHandlerList = value;
+    /**
+     * @param handlerList - The list of event handlers to set.
+     */
+    set EventHandlerList(handlerList) {
+        console.debug("ts:SetEventHandlerList", handlerList);
+        this._EventHandlerList = handlerList;
     }
+    /**
+     * @param handler - The event handler to add.
+     * @remarks This will add the handler to the list of event handlers.
+     * @returns The updated list of event handlers.
+     */
     AddEventHandler(handler) {
+        console.debug("ts:AddEventHandler", handler);
         this._EventHandlerList.push(handler);
+        return this._EventHandlerList;
     }
+    /**
+     * Determines whether to print hints for unknown types.
+     * @remarks If `true`, hints will be printed for types that cannot be determined.
+     */
     printHint;
     /**
      * Creates an instance of the class.
@@ -159,15 +175,14 @@ class GetTypeGenerator {
      */
     generate(obj, InterfaceName, depth = 0, path = ["The Object"]) {
         console.groupCollapsed(path[path.length - 1]);
-        let SafeWindow;
-        let InterfaceStr = "";
+        let safeWindow = null;
+        let interfaceStr = "";
         try {
             console.log("ts:", obj, "depth:", depth, "path:", path);
             if (obj === null)
                 return "null";
             if (typeof obj !== "function" && typeof obj !== "object")
                 return typeof obj;
-            obj = obj;
             if (typeof obj === "function") {
                 const native_fn = /^function [A-Za-z]+\(\) \{ \[native code\] \}$/;
                 if (native_fn.test(obj.toString())) {
@@ -187,26 +202,26 @@ class GetTypeGenerator {
             }
             // 處理物件
             if (depth === 0) {
-                InterfaceStr = `/** form ${obj.toString()} */\ninterface ${InterfaceName ?? "RootType"} {`;
+                interfaceStr = `/** form ${obj.toString()} */\ninterface ${InterfaceName ?? "RootType"} {`;
             }
             else {
-                InterfaceStr = "{";
+                interfaceStr = "{";
             }
-            let IsArray = false;
-            let ObjIsWindow = obj == window || obj == document || obj == self;
-            if (depth === 0 && ObjIsWindow) {
-                SafeWindow = open();
+            let isArray = false;
+            let obj_isWindow = obj == window || obj == document || obj == self;
+            if (depth === 0 && obj_isWindow) {
+                safeWindow = open();
             }
             for (const key in obj) {
                 if (Object.prototype.hasOwnProperty.call(obj, key)) {
                     const element = obj[key];
-                    let TmpInterfaceStr = "";
-                    let NeedContinue = false;
-                    for (let Data of this.runHandlers(EventName.GetTypeTop, obj, InterfaceName, depth, path, { key: key, element: element })) {
+                    let tmp_interfaceStr = "";
+                    let needContinue = false;
+                    for (let Data of this.runHandlers(0 /* EventName.GetTypeTop */, obj, InterfaceName, depth, path, { key: key, element: element })) {
                         if (Data === 4 /* FnActions.None */)
                             continue;
                         if (Data === 0 /* FnActions.Continue */) {
-                            NeedContinue = true;
+                            needContinue = true;
                             break;
                         }
                         Data = Data;
@@ -224,11 +239,9 @@ class GetTypeGenerator {
                                 break;
                         }
                     }
-                    if (NeedContinue)
+                    if (needContinue)
                         continue;
-                    if (ObjIsWindow &&
-                        SafeWindow &&
-                        SafeWindow[key] === element) {
+                    if (obj_isWindow && safeWindow && safeWindow[key] === element) {
                         console.debug("ts:continue", element);
                         continue;
                     }
@@ -236,50 +249,54 @@ class GetTypeGenerator {
                     const ElementType = this.generate(element, undefined, depth + 1, path);
                     if (ElementType === "native-code")
                         continue;
-                    TmpInterfaceStr += `${key}:${ElementType};${this.printHint ? "/** `" + String(element) + "` */" : ""}`;
+                    tmp_interfaceStr += `${key}:${ElementType};${this.printHint ? "/** `" + String(element) + "` */" : ""}`;
                     if (/^[0-9]+$/.test(key))
-                        IsArray = true;
-                    console.debug("appt: ", TmpInterfaceStr);
-                    InterfaceStr += TmpInterfaceStr;
+                        isArray = true;
+                    console.debug("appt: ", tmp_interfaceStr);
+                    interfaceStr += tmp_interfaceStr;
                 }
             }
-            if (SafeWindow && !SafeWindow.closed)
-                SafeWindow.close();
-            InterfaceStr += "}";
-            if (IsArray && this.printHint)
-                InterfaceStr += "/* Is it are `Array`? */";
+            if (safeWindow && !safeWindow.closed)
+                safeWindow.close();
+            interfaceStr += "}";
+            if (isArray && this.printHint)
+                interfaceStr += "/* Is it are `Array`? */";
         }
         catch (e) {
-            if (SafeWindow && !SafeWindow.closed)
-                SafeWindow.close();
+            if (safeWindow && !safeWindow.closed)
+                safeWindow.close();
         }
         console.groupEnd();
-        for (let Data of this.runHandlers(EventName.GetTypeReturn, obj, InterfaceName, depth, path, { Return: InterfaceStr })) {
+        for (let Data of this.runHandlers(1 /* EventName.GetTypeReturn */, obj, InterfaceName, depth, path, { Return: interfaceStr })) {
             if (!Array.isArray(Data) || Data[0] !== 3 /* FnActions.SetReturn */)
                 continue;
             Data = Data;
-            InterfaceStr = Data[1];
+            interfaceStr = Data[1];
         }
-        return InterfaceStr;
+        return interfaceStr;
     }
     /**
      * 策略執行器：根據事件執行所有策略
+     * @param EventName 事件名稱
+     * @param obj 目標物件
+     * @param InterfaceName 介面名稱
+     * @param depth 遞迴深度
+     * @param path 屬性路徑
+     * @param arg 事件處理器參數
      */
     runHandlers(EventName, obj, InterfaceName, depth, path, arg) {
-        console.group(`ts:EventHandlerRun ${EventName}`);
+        console.groupCollapsed(`ts:EventHandlerRun ${EventName}`);
         const ReturnList = [];
         for (const Fn of this.EventHandlerList) {
             if (Fn.on !== EventName)
                 continue;
             console.debug(Fn);
-            ReturnList.push(Fn.do.apply({
-                ver: {
-                    obj: obj,
-                    InterfaceName: InterfaceName,
-                    depth: depth,
-                    path: path,
-                },
-            }, [arg]));
+            ReturnList.push(Fn.do({
+                obj: obj,
+                InterfaceName: InterfaceName,
+                depth: depth,
+                path: path,
+            }, arg));
         }
         console.groupEnd();
         return ReturnList;
@@ -288,11 +305,12 @@ class GetTypeGenerator {
 // 用法範例
 function ts(object, InterfaceName) {
     const generator = new GetTypeGenerator(false);
+    generator.AddEventHandler(new SkipProperties([ts.name]));
     const de = document.createElement("a");
     de.href =
         "data:text/plain;charset=utf-8," +
-            encodeURIComponent(generator.generate(object, InterfaceName, undefined, undefined));
-    de.download = "type.d.ts";
+            encodeURIComponent(generator.generate(object, InterfaceName));
+    de.download = (InterfaceName ?? "RootType") + ".d.ts";
     de.click();
     de.remove();
 }

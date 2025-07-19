@@ -5,7 +5,7 @@
  * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
  */
 class SkipLoopRef {
-    on = 0 /* EventName.GetTypeTop */;
+    on = "GetTypeTop" /* EventName.GetTypeTop */;
     do(env, arg) {
         if (arg.element === env.obj) {
             console.warn("ts:ref=>ref", arg.element, env.path);
@@ -20,7 +20,7 @@ class SkipLoopRef {
  * @see {@link EventHandlerBase}
  */
 class JQueryHandler {
-    on = 0 /* EventName.GetTypeTop */;
+    on = "GetTypeTop" /* EventName.GetTypeTop */;
     do(env, arg) {
         if (env.depth === 0) {
             if (arg.key === "jQuery") {
@@ -41,21 +41,18 @@ class JQueryHandler {
  * @see {@link EventHandlerBase}
  */
 class SkipProperties {
-    on = 0 /* EventName.GetTypeTop */;
-    _skipKeys;
-    get skipKeys() {
-        return this._skipKeys;
-    }
+    on = "GetTypeTop" /* EventName.GetTypeTop */;
+    skipKeys;
     constructor(skipKeys) {
-        this._skipKeys = Array.from(new Set(skipKeys));
+        this.skipKeys = Array.from(new Set(skipKeys));
     }
     do(env, arg) {
-        for (const a_element of this._skipKeys) {
+        for (const a_element of this.skipKeys) {
             if (window[a_element] == arg.element) {
                 return 0 /* FnActions.Continue */;
             }
         }
-        if (this._skipKeys.includes(arg.key)) {
+        if (this.skipKeys.includes(arg.key)) {
             console.debug("ts:skip", arg.key);
             return 0 /* FnActions.Continue */;
         }
@@ -68,7 +65,7 @@ class SkipProperties {
  * @see {@link EventHandlerBase}
  */
 class ReturnHandler {
-    on = 1 /* EventName.GetTypeReturn */;
+    on = "GetTypeReturn" /* EventName.GetTypeReturn */;
     rep_list;
     constructor(rep_list = []) {
         this.rep_list = rep_list;
@@ -241,7 +238,7 @@ class GetTypeGenerator {
                     const element = obj[key];
                     let tmp_interfaceStr = "";
                     let needContinue = false;
-                    for (let Data of this.runHandlers(0 /* EventName.GetTypeTop */, obj, InterfaceName, this.depth, this.path, { key: key, element: element })) {
+                    for (let Data of this.runHandlers("GetTypeTop" /* EventName.GetTypeTop */, obj, InterfaceName, this.depth, this.path, { key: key, element: element })) {
                         if (Data === 4 /* FnActions.None */)
                             continue;
                         if (Data === 0 /* FnActions.Continue */) {
@@ -291,7 +288,7 @@ class GetTypeGenerator {
                 safeWindow.close();
         }
         console.groupEnd();
-        for (let Data of this.runHandlers(1 /* EventName.GetTypeReturn */, obj, InterfaceName, this.depth, this.path, { Return: interfaceStr })) {
+        for (let Data of this.runHandlers("GetTypeReturn" /* EventName.GetTypeReturn */, obj, InterfaceName, this.depth, this.path, { Return: interfaceStr })) {
             if (!Array.isArray(Data) || Data[0] !== 3 /* FnActions.SetReturn */)
                 continue;
             Data = Data;

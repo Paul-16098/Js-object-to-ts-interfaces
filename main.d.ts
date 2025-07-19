@@ -46,11 +46,11 @@ declare const enum EventName {
     /**
      * Represents the event for retrieving the top type.
      */
-    GetTypeTop = 0,
+    GetTypeTop = "GetTypeTop",
     /**
      * Represents the event for retrieving the return type.
      */
-    GetTypeReturn = 1
+    GetTypeReturn = "GetTypeReturn"
 }
 /**
  * Represents the possible return types for an event handler function.
@@ -123,8 +123,7 @@ declare class JQueryHandler implements EventHandlerBase<EventHandlerGetTypeTopAr
  */
 declare class SkipProperties implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
     on: EventName;
-    private _skipKeys;
-    get skipKeys(): string[];
+    private skipKeys;
     constructor(skipKeys: string[]);
     do(env: EventHandlerEnvType, arg: EventHandlerGetTypeTopArgType): EventHandlerReturn;
 }

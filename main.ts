@@ -47,11 +47,11 @@ const enum EventName {
   /**
    * Represents the event for retrieving the top type.
    */
-  GetTypeTop,
+  GetTypeTop = "GetTypeTop",
   /**
    * Represents the event for retrieving the return type.
    */
-  GetTypeReturn,
+  GetTypeReturn = "GetTypeReturn",
 }
 
 /**
@@ -170,23 +170,20 @@ class SkipProperties
   implements EventHandlerBase<EventHandlerGetTypeTopArgType>
 {
   on: EventName = EventName.GetTypeTop;
-  private _skipKeys: string[];
-  public get skipKeys(): string[] {
-    return this._skipKeys;
-  }
+  private skipKeys: string[];
   constructor(skipKeys: string[]) {
-    this._skipKeys = Array.from(new Set(skipKeys));
+    this.skipKeys = Array.from(new Set(skipKeys));
   }
   do(
     env: EventHandlerEnvType,
     arg: EventHandlerGetTypeTopArgType
   ): EventHandlerReturn {
-    for (const a_element of this._skipKeys) {
+    for (const a_element of this.skipKeys) {
       if ((window as any)[a_element] == arg.element) {
         return FnActions.Continue;
       }
     }
-    if (this._skipKeys.includes(arg.key)) {
+    if (this.skipKeys.includes(arg.key)) {
       console.debug("ts:skip", arg.key);
       return FnActions.Continue;
     }

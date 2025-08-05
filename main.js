@@ -1,14 +1,15 @@
 "use strict";
+//#endregion ts-type
 /**
  * 跳過循環引用
  * @see {@link EventHandlerBase}
  * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
  */
 class SkipLoopRef {
-    on = "GetTypeTop" /* EventName.GetTypeTop */;
+    on = "GetTypeTop" /* EventType.GetTypeTop */;
     do(env, arg) {
         if (arg.element === env.obj) {
-            console.warn("ts:ref=>ref", arg.element, env.path);
+            console.debug("ts:ref=>ref", arg.element, env.path);
             return 0 /* FnActions.Continue */;
         }
         return 4 /* FnActions.None */;
@@ -20,7 +21,7 @@ class SkipLoopRef {
  * @see {@link EventHandlerBase}
  */
 class JQueryHandler {
-    on = "GetTypeTop" /* EventName.GetTypeTop */;
+    on = "GetTypeTop" /* EventType.GetTypeTop */;
     do(env, arg) {
         if (env.depth === 0) {
             if (arg.key === "jQuery") {
@@ -41,7 +42,7 @@ class JQueryHandler {
  * @see {@link EventHandlerBase}
  */
 class SkipProperties {
-    on = "GetTypeTop" /* EventName.GetTypeTop */;
+    on = "GetTypeTop" /* EventType.GetTypeTop */;
     skipKeys;
     constructor(skipKeys) {
         this.skipKeys = Array.from(new Set(skipKeys));
@@ -65,7 +66,7 @@ class SkipProperties {
  * @see {@link EventHandlerBase}
  */
 class ReturnHandler {
-    on = "GetTypeReturn" /* EventName.GetTypeReturn */;
+    on = "GetTypeReturn" /* EventType.GetTypeReturn */;
     rep_list;
     constructor(rep_list = []) {
         this.rep_list = rep_list;
@@ -102,6 +103,7 @@ class ReturnHandler {
  * @public
  */
 class GetTypeGenerator {
+    Cofg;
     /**
      * The list of event handlers.
      */
@@ -141,18 +143,17 @@ class GetTypeGenerator {
      * 遞迴深度計數器
      * @remarks This is used to track the depth of recursion during the type generation process.
      */
-    depth;
+    depth = 0;
     /**
      * 屬性路徑
      */
-    path;
+    path = [":root:"];
     /**
-     * 重置計數器和路徑
-     * @remarks This method resets the depth counter and the path array to their initial state.
+     * init
      */
-    reset() {
-        this.depth = 0;
-        this.path = ["The Object"];
+    init() {
+        this.Cofg.download = this.Cofg.download ?? true;
+        this.Cofg.printHint = this.Cofg.printHint ?? false;
     }
     get EventHandlerList() {
         return this._EventHandlerList;
@@ -175,17 +176,12 @@ class GetTypeGenerator {
         return this._EventHandlerList;
     }
     /**
-     * Determines whether to print hints for unknown types.
-     * @remarks If `true`, hints will be printed for types that cannot be determined.
-     */
-    printHint;
-    /**
      * Creates an instance of the class.
      * @param printHint - Determines whether to print a hint. Defaults to `true`.
      */
-    constructor(printHint = true) {
-        this.printHint = printHint;
-        this.reset();
+    constructor(c = { printHint: false, download: true }) {
+        this.Cofg = c;
+        this.init();
     }
     /**
      * 生成 TypeScript 介面字串
@@ -199,30 +195,36 @@ class GetTypeGenerator {
         let safeWindow = null;
         let interfaceStr = "";
         try {
-            console.log("ts:", obj, "depth:", this.depth, "path:", this.path);
-            if (obj === null)
+            console.debug("ts:", obj, "depth:", this.depth, "path:", this.path);
+            if (obj === null) {
+                this.g_r();
                 return "null";
-            if (typeof obj !== "function" && typeof obj !== "object")
+            }
+            if (typeof obj !== "function" && typeof obj !== "object") {
+                this.g_r();
                 return typeof obj;
+            }
             if (typeof obj === "function") {
                 const native_fn = /^function [A-Za-z]+\(\) \{ \[native code\] \}$/;
                 if (native_fn.test(obj.toString())) {
+                    this.g_r();
                     return "native-code";
                 }
                 console.debug("ts:fn\n", obj);
                 // 匹配函數參數
                 const fn_arguments_RegExp = /^\(.*\)/;
                 const fn_str = obj.toString();
+                this.g_r();
                 if (fn_arguments_RegExp.test(fn_str)) {
                     let fn_type = fn_arguments_RegExp.exec(obj.toString())[0];
                     return `${fn_type} => unknown`;
                 }
                 else {
-                    return `() => unknown${this.printHint ? "/* warn: type unknown */" : ""}`;
+                    return `() => unknown${this.Cofg.printHint ? "/* warn: type unknown */" : ""}`;
                 }
             }
             // 處理物件
-            if (this.depth === 0) {
+            if (this.depth === 1) {
                 interfaceStr = `/** form ${obj.toString()} */\ninterface ${InterfaceName ?? "RootType"} {`;
             }
             else {
@@ -238,7 +240,7 @@ class GetTypeGenerator {
                     const element = obj[key];
                     let tmp_interfaceStr = "";
                     let needContinue = false;
-                    for (let Data of this.runHandlers("GetTypeTop" /* EventName.GetTypeTop */, obj, InterfaceName, this.depth, this.path, { key: key, element: element })) {
+                    for (let Data of this.runHandlers("GetTypeTop" /* EventType.GetTypeTop */, obj, InterfaceName, this.depth, this.path, { key: key, element: element })) {
                         if (Data === 4 /* FnActions.None */)
                             continue;
                         if (Data === 0 /* FnActions.Continue */) {
@@ -270,7 +272,7 @@ class GetTypeGenerator {
                     const ElementType = this.generate(element);
                     if (ElementType === "native-code")
                         continue;
-                    tmp_interfaceStr += `${key}:${ElementType};${this.printHint ? "/** `" + String(element) + "` */" : ""}`;
+                    tmp_interfaceStr += `${key}:${ElementType};${this.Cofg.printHint ? "/** `" + String(element) + "` */" : ""}`;
                     if (/^[0-9]+$/.test(key))
                         isArray = true;
                     console.debug("appt: ", tmp_interfaceStr);
@@ -280,22 +282,34 @@ class GetTypeGenerator {
             if (safeWindow && !safeWindow.closed)
                 safeWindow.close();
             interfaceStr += "}";
-            if (isArray && this.printHint)
+            if (isArray && this.Cofg.printHint)
                 interfaceStr += "/* Is it are `Array`? */";
         }
         catch (e) {
             if (safeWindow && !safeWindow.closed)
                 safeWindow.close();
         }
-        console.groupEnd();
-        for (let Data of this.runHandlers("GetTypeReturn" /* EventName.GetTypeReturn */, obj, InterfaceName, this.depth, this.path, { Return: interfaceStr })) {
+        for (let Data of this.runHandlers("GetTypeReturn" /* EventType.GetTypeReturn */, obj, InterfaceName, this.depth, this.path, { Return: interfaceStr })) {
             if (!Array.isArray(Data) || Data[0] !== 3 /* FnActions.SetReturn */)
                 continue;
             Data = Data;
             interfaceStr = Data[1];
         }
-        this.reset();
+        this.g_r();
+        if (this.depth === 0 && this.Cofg.download) {
+            const downloadEle = document.createElement("a");
+            downloadEle.href =
+                "data:text/plain;charset=utf-8," + encodeURIComponent(interfaceStr);
+            downloadEle.download = (InterfaceName ?? "RootType") + ".d.ts";
+            downloadEle.click();
+            downloadEle.remove();
+        }
         return interfaceStr;
+    }
+    g_r() {
+        this.path.pop();
+        this.depth--;
+        console.groupEnd();
     }
     /**
      * 策略執行器：根據事件執行所有策略
@@ -307,7 +321,6 @@ class GetTypeGenerator {
      * @param arg 事件處理器參數
      */
     runHandlers(EventName, obj, InterfaceName, depth, path, arg) {
-        console.groupCollapsed(`ts:EventHandlerRun ${EventName}`);
         const ReturnList = [];
         for (const Fn of this.EventHandlerList) {
             if (Fn.on !== EventName)
@@ -320,21 +333,9 @@ class GetTypeGenerator {
                 path: path,
             }, arg));
         }
-        console.groupEnd();
         return ReturnList;
     }
 }
 // 用法範例
-function ts(object, InterfaceName) {
-    const generator = new GetTypeGenerator(false);
-    generator.AddEventHandler(new SkipProperties([ts.name]));
-    const de = document.createElement("a");
-    de.href =
-        "data:text/plain;charset=utf-8," +
-            encodeURIComponent(generator.generate(object, InterfaceName));
-    de.download = (InterfaceName ?? "RootType") + ".d.ts";
-    de.click();
-    de.remove();
-}
-ts(window, "Window");
+new GetTypeGenerator({ download: false }).generate(window, "Window");
 //# sourceMappingURL=main.js.map

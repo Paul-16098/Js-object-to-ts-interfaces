@@ -42,7 +42,7 @@ declare const enum FnActions {
  * @property {string} GetTypeTop - Represents the event for retrieving the top type.
  * @property {string} GetTypeReturn - Represents the event for retrieving the return type.
  */
-declare const enum EventName {
+declare const enum EventType {
     /**
      * Represents the event for retrieving the top type.
      */
@@ -66,9 +66,21 @@ type GetType_obj_type = null | number | string | bigint | boolean | symbol | und
  * Event handler environment type.
  */
 type EventHandlerEnvType = {
+    /**
+     * @see {@link GetTypeGenerator.generate}
+     */
     obj: GetType_obj_type;
+    /**
+     * @see {@link GetTypeGenerator.generate}
+     */
     InterfaceName: string | undefined;
+    /**
+     * @see {@link GetTypeGenerator.depth}
+     */
     depth: number;
+    /**
+     * @see {@link GetTypeGenerator.path}
+     */
     path: Array<string>;
 };
 /**
@@ -95,7 +107,7 @@ type EventHandlerArgType = EventHandlerGetTypeReturnArgType | EventHandlerGetTyp
  * 策略介面：可根據事件擴展多種處理
  */
 interface EventHandlerBase<EventArg extends EventHandlerArgType> {
-    on: EventName;
+    readonly on: EventType;
     do(env: EventHandlerEnvType, arg: EventArg): EventHandlerReturn;
 }
 /**
@@ -104,7 +116,7 @@ interface EventHandlerBase<EventArg extends EventHandlerArgType> {
  * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
  */
 declare class SkipLoopRef implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
-    on: EventName;
+    on: EventType;
     do(env: EventHandlerEnvType, arg: EventHandlerGetTypeTopArgType): EventHandlerReturn;
 }
 /**
@@ -113,7 +125,7 @@ declare class SkipLoopRef implements EventHandlerBase<EventHandlerGetTypeTopArgT
  * @see {@link EventHandlerBase}
  */
 declare class JQueryHandler implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
-    on: EventName;
+    on: EventType;
     do(env: EventHandlerEnvType, arg: EventHandlerGetTypeTopArgType): EventHandlerReturn;
 }
 /**
@@ -122,7 +134,7 @@ declare class JQueryHandler implements EventHandlerBase<EventHandlerGetTypeTopAr
  * @see {@link EventHandlerBase}
  */
 declare class SkipProperties implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
-    on: EventName;
+    on: EventType;
     private skipKeys;
     constructor(skipKeys: string[]);
     do(env: EventHandlerEnvType, arg: EventHandlerGetTypeTopArgType): EventHandlerReturn;
@@ -133,7 +145,7 @@ declare class SkipProperties implements EventHandlerBase<EventHandlerGetTypeTopA
  * @see {@link EventHandlerBase}
  */
 declare class ReturnHandler implements EventHandlerBase<EventHandlerGetTypeReturnArgType> {
-    on: EventName;
+    on: EventType;
     rep_list: string[][];
     constructor(rep_list?: Array<Array<string>>);
     do(env: EventHandlerEnvType, arg: EventHandlerGetTypeReturnArgType): EventHandlerReturn;
@@ -158,6 +170,7 @@ declare class ReturnHandler implements EventHandlerBase<EventHandlerGetTypeRetur
  * @public
  */
 declare class GetTypeGenerator {
+    private Cofg;
     /**
      * The list of event handlers.
      */
@@ -172,10 +185,9 @@ declare class GetTypeGenerator {
      */
     private path;
     /**
-     * 重置計數器和路徑
-     * @remarks This method resets the depth counter and the path array to their initial state.
+     * init
      */
-    private reset;
+    private init;
     get EventHandlerList(): EventHandlerBase<EventHandlerArgType>[];
     /**
      * @param handlerList - The list of event handlers to set.
@@ -188,15 +200,10 @@ declare class GetTypeGenerator {
      */
     AddEventHandler(handler: EventHandlerBase<EventHandlerArgType>): EventHandlerBase<EventHandlerArgType>[];
     /**
-     * Determines whether to print hints for unknown types.
-     * @remarks If `true`, hints will be printed for types that cannot be determined.
-     */
-    private printHint;
-    /**
      * Creates an instance of the class.
      * @param printHint - Determines whether to print a hint. Defaults to `true`.
      */
-    constructor(printHint?: boolean);
+    constructor(c?: typeof this.Cofg);
     /**
      * 生成 TypeScript 介面字串
      * @param obj 目標物件
@@ -204,6 +211,7 @@ declare class GetTypeGenerator {
      * @returns TypeScript 介面字串
      */
     generate(obj: GetType_obj_type, InterfaceName?: string): string;
+    private g_r;
     /**
      * 策略執行器：根據事件執行所有策略
      * @param EventName 事件名稱
@@ -215,4 +223,3 @@ declare class GetTypeGenerator {
      */
     private runHandlers;
 }
-declare function ts(object: GetType_obj_type, InterfaceName?: string): void;

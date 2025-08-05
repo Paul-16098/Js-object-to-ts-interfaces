@@ -1,3 +1,4 @@
+//#region ts-type
 /**
  * Represents the possible actions that can be performed by a function.
  *
@@ -43,7 +44,7 @@ const enum FnActions {
  * @property {string} GetTypeTop - Represents the event for retrieving the top type.
  * @property {string} GetTypeReturn - Represents the event for retrieving the return type.
  */
-const enum EventName {
+const enum EventType {
   /**
    * Represents the event for retrieving the top type.
    */
@@ -82,9 +83,21 @@ type GetType_obj_type =
  * Event handler environment type.
  */
 type EventHandlerEnvType = {
+  /**
+   * @see {@link GetTypeGenerator.generate}
+   */
   obj: GetType_obj_type;
+  /**
+   * @see {@link GetTypeGenerator.generate}
+   */
   InterfaceName: string | undefined;
+  /**
+   * @see {@link GetTypeGenerator.depth}
+   */
   depth: number;
+  /**
+   * @see {@link GetTypeGenerator.path}
+   */
   path: Array<string>;
 };
 /**
@@ -111,23 +124,23 @@ type EventHandlerArgType =
  * 策略介面：可根據事件擴展多種處理
  */
 interface EventHandlerBase<EventArg extends EventHandlerArgType> {
-  on: EventName;
+  readonly on: EventType;
   do(env: EventHandlerEnvType, arg: EventArg): EventHandlerReturn;
 }
-
+//#endregion ts-type
 /**
  * 跳過循環引用
  * @see {@link EventHandlerBase}
  * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
  */
 class SkipLoopRef implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
-  on = EventName.GetTypeTop;
+  on = EventType.GetTypeTop;
   do(
     env: EventHandlerEnvType,
     arg: EventHandlerGetTypeTopArgType
   ): EventHandlerReturn {
     if (arg.element === env.obj) {
-      console.warn("ts:ref=>ref", arg.element, env.path);
+      console.debug("ts:ref=>ref", arg.element, env.path);
       return FnActions.Continue;
     }
     return FnActions.None;
@@ -140,7 +153,7 @@ class SkipLoopRef implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
  * @see {@link EventHandlerBase}
  */
 class JQueryHandler implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
-  on = EventName.GetTypeTop;
+  on = EventType.GetTypeTop;
   do(
     env: EventHandlerEnvType,
     arg: EventHandlerGetTypeTopArgType
@@ -169,7 +182,7 @@ class JQueryHandler implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
 class SkipProperties
   implements EventHandlerBase<EventHandlerGetTypeTopArgType>
 {
-  on: EventName = EventName.GetTypeTop;
+  on: EventType = EventType.GetTypeTop;
   private skipKeys: string[];
   constructor(skipKeys: string[]) {
     this.skipKeys = Array.from(new Set(skipKeys));
@@ -199,7 +212,7 @@ class SkipProperties
 class ReturnHandler
   implements EventHandlerBase<EventHandlerGetTypeReturnArgType>
 {
-  on = EventName.GetTypeReturn;
+  on = EventType.GetTypeReturn;
   rep_list: string[][];
   constructor(rep_list: Array<Array<string>> = []) {
     this.rep_list = rep_list;
@@ -241,6 +254,14 @@ class ReturnHandler
  * @public
  */
 class GetTypeGenerator {
+  private Cofg: {
+    /**
+     * Determines whether to print hints for unknown types.
+     * @remarks If `true`, hints will be printed for types that cannot be determined.
+     */
+    printHint?: boolean;
+    download?: boolean;
+  };
   /**
    * The list of event handlers.
    */
@@ -280,18 +301,17 @@ class GetTypeGenerator {
    * 遞迴深度計數器
    * @remarks This is used to track the depth of recursion during the type generation process.
    */
-  private depth!: number;
+  private depth: number = 0;
   /**
    * 屬性路徑
    */
-  private path!: Array<string>;
+  private path: Array<string> = [":root:"];
   /**
-   * 重置計數器和路徑
-   * @remarks This method resets the depth counter and the path array to their initial state.
+   * init
    */
-  private reset(): void {
-    this.depth = 0;
-    this.path = ["The Object"];
+  private init(): void {
+    this.Cofg.download = this.Cofg.download ?? true;
+    this.Cofg.printHint = this.Cofg.printHint ?? false;
   }
   public get EventHandlerList(): EventHandlerBase<EventHandlerArgType>[] {
     return this._EventHandlerList;
@@ -315,19 +335,14 @@ class GetTypeGenerator {
     this._EventHandlerList.push(handler);
     return this._EventHandlerList;
   }
-  /**
-   * Determines whether to print hints for unknown types.
-   * @remarks If `true`, hints will be printed for types that cannot be determined.
-   */
-  private printHint: boolean;
 
   /**
    * Creates an instance of the class.
    * @param printHint - Determines whether to print a hint. Defaults to `true`.
    */
-  constructor(printHint: boolean = true) {
-    this.printHint = printHint;
-    this.reset();
+  constructor(c: typeof this.Cofg = { printHint: false, download: true }) {
+    this.Cofg = c;
+    this.init();
   }
 
   /**
@@ -342,20 +357,27 @@ class GetTypeGenerator {
     let safeWindow: (Window & { [key: string]: any }) | null = null;
     let interfaceStr = "";
     try {
-      console.log("ts:", obj, "depth:", this.depth, "path:", this.path);
-      if (obj === null) return "null";
-      if (typeof obj !== "function" && typeof obj !== "object")
+      console.debug("ts:", obj, "depth:", this.depth, "path:", this.path);
+      if (obj === null) {
+        this.g_r();
+        return "null";
+      }
+      if (typeof obj !== "function" && typeof obj !== "object") {
+        this.g_r();
         return typeof obj;
+      }
 
       if (typeof obj === "function") {
         const native_fn = /^function [A-Za-z]+\(\) \{ \[native code\] \}$/;
         if (native_fn.test(obj.toString())) {
+          this.g_r();
           return "native-code";
         }
         console.debug("ts:fn\n", obj);
         // 匹配函數參數
         const fn_arguments_RegExp = /^\(.*\)/;
         const fn_str: string = obj.toString();
+        this.g_r();
         if (fn_arguments_RegExp.test(fn_str)) {
           let fn_type = (
             fn_arguments_RegExp.exec(obj.toString()) as RegExpExecArray
@@ -363,12 +385,12 @@ class GetTypeGenerator {
           return `${fn_type} => unknown`;
         } else {
           return `() => unknown${
-            this.printHint ? "/* warn: type unknown */" : ""
+            this.Cofg.printHint ? "/* warn: type unknown */" : ""
           }`;
         }
       }
       // 處理物件
-      if (this.depth === 0) {
+      if (this.depth === 1) {
         interfaceStr = `/** form ${obj.toString()} */\ninterface ${
           InterfaceName ?? "RootType"
         } {`;
@@ -386,7 +408,7 @@ class GetTypeGenerator {
           let tmp_interfaceStr = "";
           let needContinue = false;
           for (let Data of this.runHandlers(
-            EventName.GetTypeTop,
+            EventType.GetTypeTop,
             obj,
             InterfaceName,
             this.depth,
@@ -421,7 +443,7 @@ class GetTypeGenerator {
           const ElementType = this.generate(element);
           if (ElementType === "native-code") continue;
           tmp_interfaceStr += `${key}:${ElementType};${
-            this.printHint ? "/** `" + String(element) + "` */" : ""
+            this.Cofg.printHint ? "/** `" + String(element) + "` */" : ""
           }`;
           if (/^[0-9]+$/.test(key)) isArray = true;
           console.debug("appt: ", tmp_interfaceStr);
@@ -430,13 +452,13 @@ class GetTypeGenerator {
       }
       if (safeWindow && !safeWindow.closed) safeWindow.close();
       interfaceStr += "}";
-      if (isArray && this.printHint) interfaceStr += "/* Is it are `Array`? */";
+      if (isArray && this.Cofg.printHint)
+        interfaceStr += "/* Is it are `Array`? */";
     } catch (e) {
       if (safeWindow && !safeWindow.closed) safeWindow.close();
     }
-    console.groupEnd();
     for (let Data of this.runHandlers(
-      EventName.GetTypeReturn,
+      EventType.GetTypeReturn,
       obj,
       InterfaceName,
       this.depth,
@@ -447,8 +469,22 @@ class GetTypeGenerator {
       Data = Data as [FnActions.SetReturn, string];
       interfaceStr = Data[1];
     }
-    this.reset();
+    this.g_r();
+    if (this.depth === 0 && this.Cofg.download) {
+      const downloadEle = document.createElement("a");
+      downloadEle.href =
+        "data:text/plain;charset=utf-8," + encodeURIComponent(interfaceStr);
+      downloadEle.download = (InterfaceName ?? "RootType") + ".d.ts";
+      downloadEle.click();
+      downloadEle.remove();
+    }
     return interfaceStr;
+  }
+
+  private g_r() {
+    this.path.pop();
+    this.depth--;
+    console.groupEnd();
   }
 
   /**
@@ -461,14 +497,13 @@ class GetTypeGenerator {
    * @param arg 事件處理器參數
    */
   private runHandlers(
-    EventName: EventName,
+    EventName: EventType,
     obj: GetType_obj_type,
     InterfaceName: string | undefined,
     depth: number,
     path: Array<string>,
     arg: EventHandlerGetTypeTopArgType | EventHandlerGetTypeReturnArgType
   ): EventHandlerReturn[] {
-    console.groupCollapsed(`ts:EventHandlerRun ${EventName}`);
     const ReturnList: EventHandlerReturn[] = [];
     for (const Fn of this.EventHandlerList) {
       if (Fn.on !== EventName) continue;
@@ -485,22 +520,9 @@ class GetTypeGenerator {
         )
       );
     }
-    console.groupEnd();
     return ReturnList;
   }
 }
 
 // 用法範例
-function ts(object: GetType_obj_type, InterfaceName?: string) {
-  const generator = new GetTypeGenerator(false);
-  generator.AddEventHandler(new SkipProperties([ts.name]));
-  const de = document.createElement("a");
-  de.href =
-    "data:text/plain;charset=utf-8," +
-    encodeURIComponent(generator.generate(object, InterfaceName));
-  de.download = (InterfaceName ?? "RootType") + ".d.ts";
-  de.click();
-  de.remove();
-}
-
-ts(window, "Window");
+new GetTypeGenerator({ download: false }).generate(window, "Window");

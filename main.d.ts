@@ -211,7 +211,7 @@ declare class GetTypeGenerator {
      * @returns TypeScript 介面字串
      */
     generate(obj: GetType_obj_type, InterfaceName?: string): string;
-    private g_r;
+    private generate_back;
     /**
      * 策略執行器：根據事件執行所有策略
      * @param EventName 事件名稱

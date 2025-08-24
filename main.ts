@@ -164,7 +164,7 @@ class JQueryHandler implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
       }
       if (
         arg.key === "$" &&
-        (arg.element as JQueryStatic | Function).toString() ===
+        (arg.element as Function).toString() ===
           "function(e,t){return new w.fn.init(e,t)}"
       ) {
         return [FnActions.Eval, "appt+='$:JQueryStatic;'"];
@@ -359,25 +359,25 @@ class GetTypeGenerator {
     try {
       console.debug("ts:", obj, "depth:", this.depth, "path:", this.path);
       if (obj === null) {
-        this.g_r();
+        this.generate_back();
         return "null";
       }
       if (typeof obj !== "function" && typeof obj !== "object") {
-        this.g_r();
+        this.generate_back();
         return typeof obj;
       }
 
       if (typeof obj === "function") {
         const native_fn = /^function [A-Za-z]+\(\) \{ \[native code\] \}$/;
         if (native_fn.test(obj.toString())) {
-          this.g_r();
+          this.generate_back();
           return "native-code";
         }
         console.debug("ts:fn\n", obj);
         // 匹配函數參數
         const fn_arguments_RegExp = /^\(.*\)/;
         const fn_str: string = obj.toString();
-        this.g_r();
+        this.generate_back();
         if (fn_arguments_RegExp.test(fn_str)) {
           let fn_type = (
             fn_arguments_RegExp.exec(obj.toString()) as RegExpExecArray
@@ -391,9 +391,11 @@ class GetTypeGenerator {
       }
       // 處理物件
       if (this.depth === 1) {
-        interfaceStr = `/** form ${obj.toString()} */\ninterface ${
-          InterfaceName ?? "RootType"
-        } {`;
+        interfaceStr = `/**
+ * form https://github.com/Paul-16098/Js-object-to-ts-interfaces
+ * url: ${location.href}
+ * obj: ${obj.toString()}
+ */\ninterface ${InterfaceName ?? "RootType"} {`;
       } else {
         interfaceStr = "{";
       }
@@ -469,7 +471,7 @@ class GetTypeGenerator {
       Data = Data as [FnActions.SetReturn, string];
       interfaceStr = Data[1];
     }
-    this.g_r();
+    this.generate_back();
     if (this.depth === 0 && this.Cofg.download) {
       const downloadEle = document.createElement("a");
       downloadEle.href =
@@ -481,7 +483,7 @@ class GetTypeGenerator {
     return interfaceStr;
   }
 
-  private g_r() {
+  private generate_back() {
     this.path.pop();
     this.depth--;
     console.groupEnd();

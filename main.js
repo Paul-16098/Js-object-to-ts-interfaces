@@ -112,10 +112,6 @@ class ReturnHandler {
 class GetTypeGenerator {
     /** 設定 */
     config;
-    /** 兼容舊命名（Cofg） */
-    get Cofg() {
-        return this.config;
-    }
     /**
      * The list of event handlers.
      */
@@ -227,7 +223,7 @@ class GetTypeGenerator {
             if (typeof obj === "object") {
                 if (this.visited.has(obj)) {
                     this.generate_back();
-                    return "any" + (this.Cofg.printHint ? "/* circular */" : "");
+                    return "any" + (this.config.printHint ? "/* circular */" : "");
                 }
                 this.visited.add(obj);
             }
@@ -247,7 +243,7 @@ class GetTypeGenerator {
                     return `${fn_type} => unknown`;
                 }
                 else {
-                    return `() => unknown${this.Cofg.printHint ? "/* warn: type unknown */" : ""}`;
+                    return `() => unknown${this.config.printHint ? "/* warn: type unknown */" : ""}`;
                 }
             }
             // 處理物件
@@ -310,7 +306,7 @@ class GetTypeGenerator {
                     const ElementType = this.generate(element);
                     if (ElementType === "native-code")
                         continue;
-                    tmp_interfaceStr += `${key}:${ElementType};${this.Cofg.printHint ? "/** `" + String(element) + "` */" : ""}`;
+                    tmp_interfaceStr += `${key}:${ElementType};${this.config.printHint ? "/** `" + String(element) + "` */" : ""}`;
                     if (/^[0-9]+$/.test(key))
                         isArray = true;
                     console.debug("appt: ", tmp_interfaceStr);
@@ -320,7 +316,7 @@ class GetTypeGenerator {
             if (safeWindow && !safeWindow.closed)
                 safeWindow.close();
             interfaceStr += "}";
-            if (isArray && this.Cofg.printHint)
+            if (isArray && this.config.printHint)
                 interfaceStr += "/* Is it are `Array`? */";
         }
         catch (e) {
@@ -334,7 +330,7 @@ class GetTypeGenerator {
             interfaceStr = Data[1];
         }
         this.generate_back();
-        if (this.depth === 0 && this.Cofg.download) {
+        if (this.depth === 0 && this.config.download) {
             const downloadEle = document.createElement("a");
             downloadEle.href =
                 "data:text/plain;charset=utf-8," + encodeURIComponent(interfaceStr);

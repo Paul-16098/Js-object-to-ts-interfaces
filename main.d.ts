@@ -172,8 +172,6 @@ declare class ReturnHandler implements EventHandlerBase<EventHandlerGetTypeRetur
 declare class GetTypeGenerator {
     /** 設定 */
     private config;
-    /** 兼容舊命名（Cofg） */
-    private get Cofg();
     /**
      * The list of event handlers.
      */

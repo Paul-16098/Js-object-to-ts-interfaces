@@ -170,7 +170,10 @@ declare class ReturnHandler implements EventHandlerBase<EventHandlerGetTypeRetur
  * @public
  */
 declare class GetTypeGenerator {
-    private Cofg;
+    /** 設定 */
+    private config;
+    /** 兼容舊命名（Cofg） */
+    private get Cofg();
     /**
      * The list of event handlers.
      */
@@ -184,6 +187,10 @@ declare class GetTypeGenerator {
      * 屬性路徑
      */
     private path;
+    /**
+     * 已拜訪集合（偵測循環引用）
+     */
+    private visited;
     /**
      * init
      */
@@ -203,7 +210,7 @@ declare class GetTypeGenerator {
      * Creates an instance of the class.
      * @param printHint - Determines whether to print a hint. Defaults to `true`.
      */
-    constructor(c?: typeof this.Cofg);
+    constructor(c?: typeof this.config);
     /**
      * 生成 TypeScript 介面字串
      * @param obj 目標物件

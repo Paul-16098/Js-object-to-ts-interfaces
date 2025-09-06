@@ -23,14 +23,21 @@ class SkipLoopRef {
 class JQueryHandler {
     on = "GetTypeTop" /* EventType.GetTypeTop */;
     do(env, arg) {
-        if (env.depth === 0) {
+        // depth 1 == top-level (after initial increment in generate)
+        if (env.depth <= 1) {
             if (arg.key === "jQuery") {
-                return [2 /* FnActions.Eval */, "appt+='jQuery:JQueryStatic;'"];
+                return [2 /* FnActions.Eval */, "interfaceStr+='jQuery:JQueryStatic;'"];
             }
-            if (arg.key === "$" &&
-                arg.element.toString() ===
-                    "function(e,t){return new w.fn.init(e,t)}") {
-                return [2 /* FnActions.Eval */, "appt+='$:JQueryStatic;'"];
+            try {
+                if (arg.key === "$" &&
+                    typeof arg.element === "function" &&
+                    arg.element.toString() ===
+                        "function(e,t){return new w.fn.init(e,t)}") {
+                    return [2 /* FnActions.Eval */, "interfaceStr+='$:JQueryStatic;'"];
+                }
+            }
+            catch {
+                /* ignore */
             }
         }
         return 4 /* FnActions.None */;
@@ -103,7 +110,12 @@ class ReturnHandler {
  * @public
  */
 class GetTypeGenerator {
-    Cofg;
+    /** 設定 */
+    config;
+    /** 兼容舊命名（Cofg） */
+    get Cofg() {
+        return this.config;
+    }
     /**
      * The list of event handlers.
      */
@@ -149,11 +161,15 @@ class GetTypeGenerator {
      */
     path = [":root:"];
     /**
+     * 已拜訪集合（偵測循環引用）
+     */
+    visited = new WeakSet();
+    /**
      * init
      */
     init() {
-        this.Cofg.download = this.Cofg.download ?? true;
-        this.Cofg.printHint = this.Cofg.printHint ?? false;
+        this.config.download = this.config.download ?? true;
+        this.config.printHint = this.config.printHint ?? false;
     }
     get EventHandlerList() {
         return this._EventHandlerList;
@@ -179,8 +195,11 @@ class GetTypeGenerator {
      * Creates an instance of the class.
      * @param printHint - Determines whether to print a hint. Defaults to `true`.
      */
-    constructor(c = { printHint: false, download: true }) {
-        this.Cofg = c;
+    constructor(c = {
+        printHint: false,
+        download: true,
+    }) {
+        this.config = { ...c };
         this.init();
     }
     /**
@@ -193,7 +212,7 @@ class GetTypeGenerator {
         this.depth++;
         console.groupCollapsed(this.path[this.path.length - 1]);
         let safeWindow = null;
-        let interfaceStr = "";
+        let interfaceStr = ""; // 重要：handler 可能透過 eval 操作此變數
         try {
             console.debug("ts:", obj, "depth:", this.depth, "path:", this.path);
             if (obj === null) {
@@ -203,6 +222,14 @@ class GetTypeGenerator {
             if (typeof obj !== "function" && typeof obj !== "object") {
                 this.generate_back();
                 return typeof obj;
+            }
+            // 循環引用保護
+            if (typeof obj === "object") {
+                if (this.visited.has(obj)) {
+                    this.generate_back();
+                    return "any" + (this.Cofg.printHint ? "/* circular */" : "");
+                }
+                this.visited.add(obj);
             }
             if (typeof obj === "function") {
                 const native_fn = /^function [A-Za-z]+\(\) \{ \[native code\] \}$/;
@@ -257,7 +284,14 @@ class GetTypeGenerator {
                                 return Data[1];
                             case 2 /* FnActions.Eval */:
                                 try {
-                                    eval(Data[1]);
+                                    // 僅允許簡單的 interfaceStr 拼接
+                                    if (/^interfaceStr\+=/.test(Data[1])) {
+                                        // eslint-disable-next-line no-eval
+                                        eval(Data[1]);
+                                    }
+                                    else {
+                                        console.warn("Blocked eval:", Data[1]);
+                                    }
                                 }
                                 catch (e) {
                                     console.error(e);

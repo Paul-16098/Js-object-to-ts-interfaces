@@ -158,16 +158,22 @@ class JQueryHandler implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
     env: EventHandlerEnvType,
     arg: EventHandlerGetTypeTopArgType
   ): EventHandlerReturn {
-    if (env.depth === 0) {
+    // depth 1 == top-level (after initial increment in generate)
+    if (env.depth <= 1) {
       if (arg.key === "jQuery") {
-        return [FnActions.Eval, "appt+='jQuery:JQueryStatic;'"];
+        return [FnActions.Eval, "interfaceStr+='jQuery:JQueryStatic;'"];
       }
-      if (
-        arg.key === "$" &&
-        (arg.element as Function).toString() ===
-          "function(e,t){return new w.fn.init(e,t)}"
-      ) {
-        return [FnActions.Eval, "appt+='$:JQueryStatic;'"];
+      try {
+        if (
+          arg.key === "$" &&
+          typeof arg.element === "function" &&
+          (arg.element as Function).toString() ===
+            "function(e,t){return new w.fn.init(e,t)}"
+        ) {
+          return [FnActions.Eval, "interfaceStr+='$:JQueryStatic;'"];
+        }
+      } catch {
+        /* ignore */
       }
     }
     return FnActions.None;
@@ -254,12 +260,11 @@ class ReturnHandler
  * @public
  */
 class GetTypeGenerator {
-  private Cofg: {
-    /**
-     * Determines whether to print hints for unknown types.
-     * @remarks If `true`, hints will be printed for types that cannot be determined.
-     */
+  /** 設定 */
+  private config: {
+    /** 若為 true，輸出時附帶提示 */
     printHint?: boolean;
+    /** 根層呼叫完成後是否自動下載檔案 */
     download?: boolean;
   };
   /**
@@ -307,11 +312,15 @@ class GetTypeGenerator {
    */
   private path: Array<string> = [":root:"];
   /**
+   * 已拜訪集合（偵測循環引用）
+   */
+  private visited: WeakSet<object> = new WeakSet();
+  /**
    * init
    */
   private init(): void {
-    this.Cofg.download = this.Cofg.download ?? true;
-    this.Cofg.printHint = this.Cofg.printHint ?? false;
+    this.config.download = this.config.download ?? true;
+    this.config.printHint = this.config.printHint ?? false;
   }
   public get EventHandlerList(): EventHandlerBase<EventHandlerArgType>[] {
     return this._EventHandlerList;
@@ -340,8 +349,13 @@ class GetTypeGenerator {
    * Creates an instance of the class.
    * @param printHint - Determines whether to print a hint. Defaults to `true`.
    */
-  constructor(c: typeof this.Cofg = { printHint: false, download: true }) {
-    this.Cofg = c;
+  constructor(
+    c: typeof this.config = {
+      printHint: false,
+      download: true,
+    }
+  ) {
+    this.config = { ...c };
     this.init();
   }
 
@@ -355,7 +369,7 @@ class GetTypeGenerator {
     this.depth++;
     console.groupCollapsed(this.path[this.path.length - 1]);
     let safeWindow: (Window & { [key: string]: any }) | null = null;
-    let interfaceStr = "";
+    let interfaceStr = ""; // 重要：handler 可能透過 eval 操作此變數
     try {
       console.debug("ts:", obj, "depth:", this.depth, "path:", this.path);
       if (obj === null) {
@@ -365,6 +379,15 @@ class GetTypeGenerator {
       if (typeof obj !== "function" && typeof obj !== "object") {
         this.generate_back();
         return typeof obj;
+      }
+
+      // 循環引用保護
+      if (typeof obj === "object") {
+        if (this.visited.has(obj)) {
+          this.generate_back();
+          return "any" + (this.config.printHint ? "/* circular */" : "");
+        }
+        this.visited.add(obj);
       }
 
       if (typeof obj === "function") {
@@ -385,7 +408,7 @@ class GetTypeGenerator {
           return `${fn_type} => unknown`;
         } else {
           return `() => unknown${
-            this.Cofg.printHint ? "/* warn: type unknown */" : ""
+            this.config.printHint ? "/* warn: type unknown */" : ""
           }`;
         }
       }
@@ -428,7 +451,13 @@ class GetTypeGenerator {
                 return Data[1];
               case FnActions.Eval:
                 try {
-                  eval(Data[1]);
+                  // 僅允許簡單的 interfaceStr 拼接
+                  if (/^interfaceStr\+=/.test(Data[1])) {
+                    // eslint-disable-next-line no-eval
+                    eval(Data[1]);
+                  } else {
+                    console.warn("Blocked eval:", Data[1]);
+                  }
                 } catch (e) {
                   console.error(e);
                   continue;
@@ -445,7 +474,7 @@ class GetTypeGenerator {
           const ElementType = this.generate(element);
           if (ElementType === "native-code") continue;
           tmp_interfaceStr += `${key}:${ElementType};${
-            this.Cofg.printHint ? "/** `" + String(element) + "` */" : ""
+            this.config.printHint ? "/** `" + String(element) + "` */" : ""
           }`;
           if (/^[0-9]+$/.test(key)) isArray = true;
           console.debug("appt: ", tmp_interfaceStr);
@@ -454,7 +483,7 @@ class GetTypeGenerator {
       }
       if (safeWindow && !safeWindow.closed) safeWindow.close();
       interfaceStr += "}";
-      if (isArray && this.Cofg.printHint)
+      if (isArray && this.config.printHint)
         interfaceStr += "/* Is it are `Array`? */";
     } catch (e) {
       if (safeWindow && !safeWindow.closed) safeWindow.close();
@@ -472,7 +501,7 @@ class GetTypeGenerator {
       interfaceStr = Data[1];
     }
     this.generate_back();
-    if (this.depth === 0 && this.Cofg.download) {
+    if (this.depth === 0 && this.config.download) {
       const downloadEle = document.createElement("a");
       downloadEle.href =
         "data:text/plain;charset=utf-8," + encodeURIComponent(interfaceStr);

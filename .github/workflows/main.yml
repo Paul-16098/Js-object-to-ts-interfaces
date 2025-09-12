@@ -38,6 +38,7 @@ jobs:
       - name: Commit changes
         run: |
           if [ -n "$(git status --porcelain)" ]; then
+            git add .
             git commit -am "[bot] Update version (${{ github.run_id }})"
           else
             echo "No changes to commit."

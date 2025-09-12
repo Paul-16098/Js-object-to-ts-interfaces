@@ -1,0 +1,48 @@
+name: Build ts
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "*.ts"
+  pull_request:
+    types: [closed]
+    paths:
+      - "*.ts"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Install Node.js
+        uses: actions/setup-node@main
+        with:
+          node-version: "23"
+
+      - name: Install dependencies
+        run: npm install
+      - name: Build
+        run: |
+          tsc -p .
+
+      - name: Set up Git user
+        run: |
+          git config --global user.email "Actions@github.com"
+          git config --global user.name "GitHub Actions"
+
+      - name: Commit changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -am "[bot] Update version (${{ github.run_id }})"
+          else
+            echo "No changes to commit."
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push changes
+        run: git push

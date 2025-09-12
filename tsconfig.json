@@ -13,7 +13,9 @@
     "outDir": ".",
     "strict": true,
     "declaration": true,
-    "noImplicitAny": true
+    "noImplicitAny": true,
+    "incremental": true
   },
-  "exclude": ["node_modules", "**/node_modules/*"]
+  "exclude": ["node_modules", "**/node_modules/*"],
+  "include": ["./main.ts"]
 }

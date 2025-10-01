@@ -259,11 +259,12 @@ class GetTypeGenerator {
             }
             let isArray = false;
             let obj_isWindow = obj == window || obj == document || obj == self;
-            if (this.depth === 0 && obj_isWindow) {
+            // depth 在進入本函數開頭已 ++，因此首層應為 1
+            if (this.depth === 1 && obj_isWindow) {
                 safeWindow = open();
             }
             for (const key in obj) {
-                if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                if (Object.hasOwn(obj, key)) {
                     const element = obj[key];
                     let tmp_interfaceStr = "";
                     let needContinue = false;
@@ -274,14 +275,13 @@ class GetTypeGenerator {
                             needContinue = true;
                             break;
                         }
-                        Data = Data;
                         switch (Data[0]) {
                             case 1 /* FnActions.Return */:
                                 return Data[1];
                             case 2 /* FnActions.Eval */:
                                 try {
                                     // 僅允許簡單的 interfaceStr 拼接
-                                    if (/^interfaceStr\+=/.test(Data[1])) {
+                                    if (Data[1].startsWith("interfaceStr+=")) {
                                         // eslint-disable-next-line no-eval
                                         eval(Data[1]);
                                     }
@@ -307,7 +307,7 @@ class GetTypeGenerator {
                     if (ElementType === "native-code")
                         continue;
                     tmp_interfaceStr += `${key}:${ElementType};${this.config.printHint ? "/** `" + String(element) + "` */" : ""}`;
-                    if (/^[0-9]+$/.test(key))
+                    if (/^\d+$/.test(key))
                         isArray = true;
                     console.debug("appt: ", tmp_interfaceStr);
                     interfaceStr += tmp_interfaceStr;
@@ -322,11 +322,11 @@ class GetTypeGenerator {
         catch (e) {
             if (safeWindow && !safeWindow.closed)
                 safeWindow.close();
+            throw e;
         }
         for (let Data of this.runHandlers("GetTypeReturn" /* EventType.GetTypeReturn */, obj, InterfaceName, this.depth, this.path, { Return: interfaceStr })) {
             if (!Array.isArray(Data) || Data[0] !== 3 /* FnActions.SetReturn */)
                 continue;
-            Data = Data;
             interfaceStr = Data[1];
         }
         this.generate_back();

@@ -189,7 +189,7 @@ class SkipProperties
   implements EventHandlerBase<EventHandlerGetTypeTopArgType>
 {
   on: EventType = EventType.GetTypeTop;
-  private skipKeys: string[];
+  private readonly skipKeys: string[];
   constructor(skipKeys: string[]) {
     this.skipKeys = Array.from(new Set(skipKeys));
   }
@@ -261,7 +261,7 @@ class ReturnHandler
  */
 class GetTypeGenerator {
   /** 設定 */
-  private config: {
+  private readonly config: {
     /** 若為 true，輸出時附帶提示 */
     printHint?: boolean;
     /** 根層呼叫完成後是否自動下載檔案 */
@@ -310,11 +310,11 @@ class GetTypeGenerator {
   /**
    * 屬性路徑
    */
-  private path: Array<string> = [":root:"];
+  private readonly path: Array<string> = [":root:"];
   /**
    * 已拜訪集合（偵測循環引用）
    */
-  private visited: WeakSet<object> = new WeakSet();
+  private readonly visited: WeakSet<object> = new WeakSet();
   /**
    * init
    */
@@ -424,11 +424,12 @@ class GetTypeGenerator {
       }
       let isArray = false;
       let obj_isWindow = obj == window || obj == document || obj == self;
-      if (this.depth === 0 && obj_isWindow) {
+      // depth 在進入本函數開頭已 ++，因此首層應為 1
+      if (this.depth === 1 && obj_isWindow) {
         safeWindow = open();
       }
       for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        if (Object.hasOwn(obj, key)) {
           const element: object[keyof object] = obj[key as keyof object];
           let tmp_interfaceStr = "";
           let needContinue = false;
@@ -445,14 +446,14 @@ class GetTypeGenerator {
               needContinue = true;
               break;
             }
-            Data = Data as [FnActions.Return | FnActions.Eval, string];
+
             switch (Data[0]) {
               case FnActions.Return:
                 return Data[1];
               case FnActions.Eval:
                 try {
                   // 僅允許簡單的 interfaceStr 拼接
-                  if (/^interfaceStr\+=/.test(Data[1])) {
+                  if (Data[1].startsWith("interfaceStr+=")) {
                     // eslint-disable-next-line no-eval
                     eval(Data[1]);
                   } else {
@@ -476,7 +477,7 @@ class GetTypeGenerator {
           tmp_interfaceStr += `${key}:${ElementType};${
             this.config.printHint ? "/** `" + String(element) + "` */" : ""
           }`;
-          if (/^[0-9]+$/.test(key)) isArray = true;
+          if (/^\d+$/.test(key)) isArray = true;
           console.debug("appt: ", tmp_interfaceStr);
           interfaceStr += tmp_interfaceStr;
         }
@@ -487,6 +488,7 @@ class GetTypeGenerator {
         interfaceStr += "/* Is it are `Array`? */";
     } catch (e) {
       if (safeWindow && !safeWindow.closed) safeWindow.close();
+      throw e;
     }
     for (let Data of this.runHandlers(
       EventType.GetTypeReturn,
@@ -497,7 +499,7 @@ class GetTypeGenerator {
       { Return: interfaceStr }
     )) {
       if (!Array.isArray(Data) || Data[0] !== FnActions.SetReturn) continue;
-      Data = Data as [FnActions.SetReturn, string];
+
       interfaceStr = Data[1];
     }
     this.generate_back();

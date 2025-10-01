@@ -135,7 +135,7 @@ declare class JQueryHandler implements EventHandlerBase<EventHandlerGetTypeTopAr
  */
 declare class SkipProperties implements EventHandlerBase<EventHandlerGetTypeTopArgType> {
     on: EventType;
-    private skipKeys;
+    private readonly skipKeys;
     constructor(skipKeys: string[]);
     do(env: EventHandlerEnvType, arg: EventHandlerGetTypeTopArgType): EventHandlerReturn;
 }
@@ -171,7 +171,7 @@ declare class ReturnHandler implements EventHandlerBase<EventHandlerGetTypeRetur
  */
 declare class GetTypeGenerator {
     /** 設定 */
-    private config;
+    private readonly config;
     /**
      * The list of event handlers.
      */
@@ -184,11 +184,11 @@ declare class GetTypeGenerator {
     /**
      * 屬性路徑
      */
-    private path;
+    private readonly path;
     /**
      * 已拜訪集合（偵測循環引用）
      */
-    private visited;
+    private readonly visited;
     /**
      * init
      */

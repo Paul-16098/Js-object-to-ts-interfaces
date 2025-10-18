@@ -53,3 +53,7 @@ $RECYCLE.BIN/
 
 node_modules
 tsconfig.tsbuildinfo
+*.tsbuildinfo
+*.map
+pnpm-debug.log*
+packages/**/dist/

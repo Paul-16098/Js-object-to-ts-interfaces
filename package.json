@@ -1,9 +1,15 @@
 {
-  "name": "TypeScript Interface 生成器",
+  "name": "js-object-to-ts-interfaces",
   "description": "將 JS 對象自動轉換為 TypeScript 介面定義。支援遞迴解析、策略擴展、特殊鍵跳過、函數類型推斷等。",
   "readme": "./README.md",
   "homepage": "https://github.com/Paul-16098/Js-object-to-ts-interfaces/",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r run build",
+    "build:searchKey": "pnpm -F @js-to-ts-interfaces/search-key run build"
+  },
   "devDependencies": {
-    "@types/jquery": "^3.5.32"
+    "@types/jquery": "^3.5.32",
+    "typescript": "^5.6.3"
   }
 }

@@ -1,94 +1,7 @@
 "use strict";
-//#endregion ts-type
-/**
- * 跳過循環引用
- * @see {@link EventHandlerBase}
- * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
- */
-class SkipLoopRef {
-    on = "GetTypeTop" /* EventType.GetTypeTop */;
-    do(env, arg) {
-        if (arg.element === env.obj) {
-            console.debug("ts:ref=>ref", arg.element, env.path);
-            return 0 /* FnActions.Continue */;
-        }
-        return 4 /* FnActions.None */;
-    }
-}
-/**
- * 處理特殊鍵名（jQuery, $）
- * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
- * @see {@link EventHandlerBase}
- */
-class JQueryHandler {
-    on = "GetTypeTop" /* EventType.GetTypeTop */;
-    do(env, arg) {
-        // depth 1 == top-level (after initial increment in generate)
-        if (env.depth <= 1) {
-            if (arg.key === "jQuery") {
-                return [2 /* FnActions.Eval */, "interfaceStr+='jQuery:JQueryStatic;'"];
-            }
-            try {
-                if (arg.key === "$" &&
-                    typeof arg.element === "function" &&
-                    arg.element.toString() === "function(e,t){return new w.fn.init(e,t)}") {
-                    return [2 /* FnActions.Eval */, "interfaceStr+='$:JQueryStatic;'"];
-                }
-            }
-            catch {
-                /* ignore */
-            }
-        }
-        return 4 /* FnActions.None */;
-    }
-}
-/**
- * 跳過瀏覽器全域物件
- * @implements {EventHandlerBase<EventHandlerGetTypeTopArgType>}
- * @see {@link EventHandlerBase}
- */
-class SkipProperties {
-    on = "GetTypeTop" /* EventType.GetTypeTop */;
-    skipKeys;
-    constructor(skipKeys) {
-        this.skipKeys = Array.from(new Set(skipKeys));
-    }
-    do(env, arg) {
-        for (const a_element of this.skipKeys) {
-            if (window[a_element] == arg.element) {
-                return 0 /* FnActions.Continue */;
-            }
-        }
-        if (this.skipKeys.includes(arg.key)) {
-            console.debug("ts:skip", arg.key);
-            return 0 /* FnActions.Continue */;
-        }
-        return 4 /* FnActions.None */;
-    }
-}
-/**
- * 處理最終返回值（後處理）
- * @implements {EventHandlerBase<EventHandlerGetTypeReturnArgType>}
- * @see {@link EventHandlerBase}
- */
-class ReturnHandler {
-    on = "GetTypeReturn" /* EventType.GetTypeReturn */;
-    rep_list;
-    constructor(rep_list = []) {
-        this.rep_list = rep_list;
-    }
-    do(env, arg) {
-        for (const rep of this.rep_list) {
-            if (rep.length !== 2) {
-                console.warn("ts:rep_list error", rep);
-                continue;
-            }
-            arg.Return = arg.Return.replaceAll(rep[0], rep[1]);
-            console.debug("ts:rep", rep[0], "=>", rep[1]);
-        }
-        return [3 /* FnActions.SetReturn */, arg.Return];
-    }
-}
+Object.defineProperty(exports, "__esModule", { value: true });
+const eventHandlers_1 = require("./eventHandlers");
+// Event handlers moved to ./eventHandlers
 /**
  * The `GetTypeGenerator` class provides functionality to generate TypeScript interface definitions
  * from JavaScript objects at runtime. It supports extensible event handlers for custom processing
@@ -115,9 +28,9 @@ class GetTypeGenerator {
      * The list of event handlers.
      */
     _EventHandlerList = [
-        new SkipLoopRef(),
-        new JQueryHandler(),
-        new SkipProperties([
+        new eventHandlers_1.SkipLoopRef(),
+        new eventHandlers_1.JQueryHandler(),
+        new eventHandlers_1.SkipProperties([
             "document",
             "location",
             "history",
@@ -141,7 +54,7 @@ class GetTypeGenerator {
             "speechSynthesis",
             GetTypeGenerator.name,
         ]),
-        new ReturnHandler([
+        new eventHandlers_1.ReturnHandler([
             ["$:JQueryStatic;$:() => unknown", "$:JQueryStatic"],
             ["jQuery:JQueryStatic;jQuery:() => unknown", "jQuery:JQueryStatic"],
         ]),

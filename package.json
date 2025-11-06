@@ -5,7 +5,8 @@
   "homepage": "https://github.com/Paul-16098/Js-object-to-ts-interfaces/",
   "private": true,
   "scripts": {
-    "build": "pnpm -r run build",
+    "build": "pnpm -r run build && pnpm run build:root",
+    "build:root": "tsc -p tsconfig.json",
     "build:searchKey": "pnpm -F @js-to-ts-interfaces/search-key run build"
   },
   "devDependencies": {

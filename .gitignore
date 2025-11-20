@@ -57,3 +57,7 @@ tsconfig.tsbuildinfo
 *.map
 pnpm-debug.log*
 packages/**/dist/
+
+**.js
+**.js.map
+**.d.ts

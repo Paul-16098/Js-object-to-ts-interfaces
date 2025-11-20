@@ -7,10 +7,12 @@
   "scripts": {
     "build": "pnpm -r run build && pnpm run build:root",
     "build:root": "tsc -p tsconfig.json",
-    "build:searchKey": "pnpm -F @js-to-ts-interfaces/search-key run build"
+    "build:searchKey": "pnpm -F @js-to-ts-interfaces/search-key run build",
+    "build:core": "pnpm -F @js-to-ts-interfaces/core run build"
   },
   "devDependencies": {
     "@types/jquery": "^3.5.32",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "@js-to-ts-interfaces/core": "workspace:core"
   }
 }

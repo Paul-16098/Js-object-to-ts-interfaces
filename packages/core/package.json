@@ -1,0 +1,20 @@
+{
+  "name": "@js-to-ts-interfaces/core",
+  "version": "0.1.0",
+  "private": false,
+  "description": "共用核心工具: numeric key 判斷, native function 檢測, 乾淨 iframe 環境建立與全域差異分析。",
+  "main": "dist/main.js",
+  "types": "dist/main.d.ts",
+  "files": ["dist", "README.md", "LICENSE*"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && pnpm run bundle",
+    "bundle": "esbuild main.ts --bundle --format=iife --global-name=CoreModule --outfile=dist/bundle.js --sourcemap",
+    "clean": "rimraf dist"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.6.3"
+  }
+}

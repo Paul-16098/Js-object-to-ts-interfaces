@@ -1,3 +1,4 @@
+import { isNativeFunction, isNumericKey } from "@js-to-ts-interfaces/core";
 import {
   FnActions,
   EventType,
@@ -31,7 +32,7 @@ import {
  *
  * @public
  */
-class GetTypeGenerator {
+export class GetTypeGenerator {
   /** 設定 */
   private readonly config: {
     /** 若為 true，輸出時附帶提示 */
@@ -149,18 +150,17 @@ class GetTypeGenerator {
    * 將執行期的函式物件轉成對應的 TypeScript 函式型別字串。
    *
    * 行為:
-   * - 若為原生（native code）函式，回傳字串 'native-code'（供外層略過輸出）。
+   * - 若為原生（native code）函式，回傳 `null`（供外層略過輸出）。
    * - 嘗試以正則擷取函式字串的參數區段，成功則組成 '(args...) => unknown'。
    * - 若無法解析參數列表，回傳 '() => unknown'，並在啟用 printHint 時附帶提示註解。
    *
    * 為安全與簡化，不嘗試推斷回傳型別與參數型別，只標示為 unknown。
    *
    * @param fn 需轉換的函式實例。
-   * @returns 代表此函式型別的字串，或特殊標記 'native-code'。
+   * @returns 代表此函式型別的字串，或 `null`。
    */
-  private handleFunctionType(fn: Function): string {
-    const native_fn = /^function [A-Za-z]+\(\) \{ \[native code\] \}$/;
-    if (native_fn.test(fn.toString())) return "native-code";
+  private handleFunctionType(fn: Function): string | null {
+    if (isNativeFunction(fn)) return null;
     const fn_arguments_RegExp = /^\(.*\)/;
     const fn_str = fn.toString();
     if (fn_arguments_RegExp.test(fn_str)) {
@@ -225,7 +225,7 @@ class GetTypeGenerator {
   private openSafeWindowIfNeeded(
     obj: any
   ): (Window & { [k: string]: any }) | null {
-    const isWin = obj == window || obj == document || obj == self;
+    const isWin = obj == globalThis || obj == document;
     if (this.depth === 1 && isWin) {
       return open();
     }
@@ -475,7 +475,7 @@ class GetTypeGenerator {
     obj_isWindow: boolean;
   } {
     const interfaceStr = this.startInterfaceDeclaration(obj, InterfaceName);
-    const obj_isWindow = obj == window || obj == document || obj == self;
+    const obj_isWindow = obj == globalThis || obj == document;
     const safeWindow = this.openSafeWindowIfNeeded(obj);
     return { interfaceStr, safeWindow, obj_isWindow };
   }
@@ -573,10 +573,12 @@ class GetTypeGenerator {
     return {
       interfaceStr,
       skip: false,
-      isArrayKey: /^\d+$/.test(key),
+      isArrayKey: isNumericKey(key),
     };
   }
 }
 
-// 用法範例
-new GetTypeGenerator({ download: false }).generate(window, "Window");
+// 移除自動副作用執行；使用者可自行：
+// const gen = new GetTypeGenerator({ download: false });
+// const code = gen.generate(window, "Window");
+// console.log(code);

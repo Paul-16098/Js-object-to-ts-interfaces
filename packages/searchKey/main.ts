@@ -1,3 +1,10 @@
+import {
+  createCleanIframe,
+  diffGlobalKeys,
+  isNumericKey,
+  isNativeFunction,
+} from "@js-to-ts-interfaces/core";
+
 /**
  * 合併自原始 searchKey 專案的主檔案。
  * 來源：workspace 根目錄的 `searchKey/main.ts`。
@@ -12,9 +19,11 @@ const MAX_DEPTH: number = Infinity;
  */
 type SearchResult = { path: string; code: any };
 
-// 在 script 檔中可直接擴充 Window 以供型別提示（不轉成模組）
-interface Window {
-  $searchKey?: (key: string, fuzzy?: boolean) => SearchResult[];
+// 模組化後需使用 declare global 擴充 Window
+declare global {
+  interface Window {
+    $searchKey?: (key: string, fuzzy?: boolean) => SearchResult[];
+  }
 }
 
 /**
@@ -88,22 +97,13 @@ function newEval(stringCode: string, safety: boolean = true) {
     blackList.some((value) =>
       typeof value === "string"
         ? stringCode.includes(value)
-        : value.test(stringCode)
+        : value.test(stringCode),
     )
   ) {
     throw new Error(`不允許的關鍵字或代碼: ${stringCode}`);
   }
 
   return new Function(`${safety ? "return" : ""} ${stringCode}`)();
-}
-
-/**
- * 是否為純數字
- * @param str
- * @returns boolean
- */
-function isNum(str: string): boolean {
-  return /^\d+$/.test(str);
 }
 
 /**
@@ -145,7 +145,7 @@ function getAllNodes(): Node[] {
   const walker = document.createTreeWalker(
     document.documentElement,
     NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT,
-    null
+    null,
   );
 
   let node: Node | null;
@@ -221,7 +221,7 @@ class KeyCollector {
     obj: { [x: string]: any } | null,
     item: { root: any; parent?: any; key?: any; extra: any },
     recordDiscard = true,
-    depth = 0
+    depth = 0,
   ) {
     if (obj === null || (typeof obj !== "function" && typeof obj !== "object"))
       return;
@@ -279,7 +279,7 @@ class KeyCollector {
     obj.extra = parent.extra;
     this._generatePath(parent);
     obj.path =
-      parent.path + (isNum(obj.key) ? `[${obj.key}]` : `['${obj.key}']`);
+      parent.path + (isNumericKey(obj.key) ? `[${obj.key}]` : `['${obj.key}']`);
   }
   _generateAllPaths() {
     for (const [key, val] of this.tempKeys) {
@@ -308,7 +308,7 @@ class KeyCollector {
             key: any;
           };
           this._generatePath(parent);
-          const path = isNum(key)
+          const path = isNumericKey(key)
             ? `${parent.path}[${key}]`
             : `${parent.path}['${key}']`;
           this.addKey(key, path, parent.extra);
@@ -335,7 +335,7 @@ class KeyCollector {
     } else {
       const keys = String.prototype.match.call(
         root,
-        /(?<=[.\[]['"]?)[^'".\[\]]+/g
+        /(?<=[.\[]['"]?)[^'".\[\]]+/g,
       );
       if (keys) key = keys.pop();
     }
@@ -351,7 +351,7 @@ class KeyCollector {
         if (depth < MAX_DEPTH) {
           return this._collectKeys(obj, item, false, depth);
         }
-      })
+      }),
     );
     this._generateAllPaths();
     this._init();
@@ -359,82 +359,158 @@ class KeyCollector {
   }
 }
 
-const tag = window === window.top ? "top" : location.origin + location.pathname;
+/**
+ * 可選注入函數:建立並注入 `$searchKey` 全域方法。
+ * 呼叫後回傳注入的函數參考與分析後的鍵集合(供進階使用)。
+ *
+ * @param options.globalName 注入的全域名稱,預設 `$searchKey`
+ * @param options.fuzzy 是否預設啟用 fuzzy 模式(僅影響使用者未傳第三參數時)
+ * @param options.maxDepth 重新指定最大搜索深度(覆蓋 MAX_DEPTH)
+ * @param options.log 是否輸出 console 訊息
+ */
 
-(function (name, func) {
-  func();
-  return 0;
-})(tag, async () => {
-  const iframe = document.createElement("iframe");
-  iframe.id = "iframe_for_test";
-  iframe.style.display = "none";
-  document.body.appendChild(iframe);
-  let iWindow = iframe.contentWindow as typeof window | null;
-  try {
-    if (!iWindow) throw new Error("iframe.contentWindow is null");
+/**
+ * Helper function to collect keys from global properties.
+ */
+async function collectGlobalKeys(
+  globalProps: Record<string, string[]>,
+): Promise<Map<string, Set<string | { path: string; [k: string]: any }>>> {
+  const kc = new KeyCollector(IGNORE_PROPS);
+  for (const type in globalProps) {
+    for (const key of globalProps[type]) {
+      const path = `window['${key}']`;
+      kc.addKey(key, path);
+      kc.collect((window as any)[key], path);
+    }
+  }
+  return kc.getAllKeys();
+}
 
-    // 反劫持：從乾淨 iWindow 取出內建結構
-    const {
-      Object,
-      String,
-      Array,
-      Set,
-      Map,
-      WeakMap,
-      RegExp,
-      Promise,
-      console,
-    } = iWindow;
+/**
+ * Helper function to collect keys from framework-mounted nodes (Vue/React).
+ */
+async function collectFrameworkKeys() {
+  const vkc = new KeyCollector(new Set([...IGNORE_PROPS, ...VUE_IGNORE_PROPS]));
+  const rkc = new KeyCollector(
+    new Set([...IGNORE_PROPS, ...REACT_IGNORE_PROPS]),
+  );
 
-    // 獲取全局屬性差異
-    const globalProps = new Object();
-    const wKeys = Object.getOwnPropertyNames(window);
-    const iKeys = Object.getOwnPropertyNames(iWindow);
-    for (const key of wKeys) {
-      if (!isNum(key) && !iKeys.includes(key)) {
-        // @ts-expect-error - 動態分類 by type
-        const type = getType(window[key]);
-        // @ts-expect-error
-        globalProps[type] = globalProps[type] || new Array();
-        // @ts-expect-error
-        globalProps[type].push(key);
+  for (const node of getAllNodes()) {
+    for (const prop of Object.getOwnPropertyNames(node)) {
+      if (prop.startsWith("__vue")) {
+        vkc.collect((node as any)[prop], `node['${prop}']`, { node });
+      }
+      if (prop.startsWith("__react")) {
+        rkc.collect((node as any)[prop], `node['${prop}']`, { node });
       }
     }
+  }
+
+  const vueKeys = await vkc.getAllKeys();
+  const reactKeys = await rkc.getAllKeys();
+  return { vueKeys, reactKeys };
+}
+
+export async function injectSearchKey(options?: {
+  globalName?: string;
+  fuzzy?: boolean;
+  maxDepth?: number;
+  log?: boolean;
+}) {
+  const tag =
+    window === window.top ? "top" : location.origin + location.pathname;
+  const {
+    globalName = "$searchKey",
+    fuzzy = false,
+    maxDepth,
+    log = true,
+  } = options || {};
+  if (typeof maxDepth === "number" && maxDepth > 0) {
+    // 覆蓋 MAX_DEPTH (仍保持非嚴格，僅影響後續遞迴)
+    (globalThis as any).__SEARCH_KEY_MAX_DEPTH_OVERRIDE__ = maxDepth;
+  }
+  if ((globalThis as any)[globalName]) {
+    if (log) console.log(`${globalName} 已存在，跳過重新注入。`);
+    return { fn: (window as any)[globalName] as typeof window.$searchKey };
+  }
+  const { win: iWindow, cleanup } = createCleanIframe();
+  try {
+    // 取得全域差異（僅需要 window 與乾淨 iframe window 鍵差）
+    const globalProps: Record<string, string[]> = diffGlobalKeys(
+      window,
+      iWindow,
+    );
     console.log(`${tag} 全局屬性：\n`, globalProps);
 
     // 注入函數：蒐集全域鍵
-    const kc = new KeyCollector(IGNORE_PROPS);
-    for (const type in globalProps) {
-      // @ts-expect-error - 動態走訪
-      for (const key of globalProps[type]) {
-        const path = `window['${key}']`;
-        kc.addKey(key, path);
-        kc.collect((window as any)[key], path);
-      }
-    }
-    const globalKeys = await kc.getAllKeys();
+    const globalKeys = await collectGlobalKeys(globalProps);
 
     // 掃描框架掛載節點
-    const vkc = new KeyCollector(
-      new Set([...IGNORE_PROPS, ...VUE_IGNORE_PROPS])
-    );
-    const rkc = new KeyCollector(
-      new Set([...IGNORE_PROPS, ...REACT_IGNORE_PROPS])
-    );
-    for (const node of getAllNodes()) {
-      for (const prop of Object.getOwnPropertyNames(node)) {
-        if (prop.startsWith("__vue")) {
-          // @ts-expect-error
-          vkc.collect(node[prop], `node['${prop}']`, { node });
-        }
-        if (prop.startsWith("__react")) {
-          // @ts-expect-error
-          rkc.collect(node[prop], `node['${prop}']`, { node });
+    const { vueKeys, reactKeys } = await collectFrameworkKeys();
+
+    /**
+     * Converts a Set of mixed entries (strings or objects with path property) to an array of path strings.
+     */
+    function convertSetToPaths(set: Set<any> | undefined): string[] {
+      if (!set) return [];
+      const paths: string[] = [];
+      for (const entry of set) {
+        if (typeof entry === "string") {
+          paths.push(entry);
+        } else if (
+          entry &&
+          typeof entry === "object" &&
+          typeof entry.path === "string"
+        ) {
+          paths.push(entry.path);
         }
       }
+      return paths;
     }
-    const vueKeys = await vkc.getAllKeys();
-    const reactKeys = await rkc.getAllKeys();
+
+    /**
+     * Searches a single key collection for matching keys and returns their paths.
+     */
+    function searchInKeyCollection(
+      keyCollection: Map<string, Set<any>>,
+      searchKey: string,
+      useFuzzy: boolean,
+    ): string[] {
+      if (useFuzzy) {
+        const lowerKey = searchKey.toLowerCase();
+        const paths: string[] = [];
+        for (const _key of keyCollection.keys()) {
+          if (_key.toLowerCase().includes(lowerKey)) {
+            paths.push(...convertSetToPaths(keyCollection.get(_key)));
+          }
+        }
+        return paths;
+      }
+      return convertSetToPaths(keyCollection.get(searchKey));
+    }
+
+    /**
+     * Safely evaluates a path string to retrieve the actual object reference.
+     */
+    function evaluatePathSafely(path: string): any {
+      try {
+        return newEval(`return ${path}`, false);
+      } catch {
+        return undefined;
+      }
+    }
+
+    /**
+     * Checks if a search result is valid (non-null, non-native-function).
+     */
+    function isValidSearchResult(item: SearchResult): boolean {
+      if (!item?.code) return false;
+      if (typeof item.code === "function") {
+        return !isNativeFunction(item.code);
+      }
+      return true;
+    }
+
     /**
      * Searches for a key in multiple key collections and returns an array of objects containing the path and evaluated code.
      *
@@ -448,91 +524,34 @@ const tag = window === window.top ? "top" : location.origin + location.pathname;
      *
      * The results are evaluated using the `newEval` function and filtered to exclude native functions.
      */
-    function $searchKey(key: string, fuzzy: boolean = false): SearchResult[] {
-      const resultPaths: Array<string> = new Array();
-      const dataResult: SearchResult[] = new Array();
+    function $searchKey(key: string, _fuzzy: boolean = fuzzy): SearchResult[] {
+      const useFuzzy = _fuzzy === true;
 
-      const toPaths = (set: Set<any> | undefined): string[] => {
-        if (!set) return [];
-        const out: string[] = [];
-        for (const entry of set) {
-          if (typeof entry === "string") out.push(entry);
-          else if (
-            entry &&
-            typeof entry === "object" &&
-            typeof entry.path === "string"
-          )
-            out.push(entry.path);
-        }
-        return out;
-      };
+      // Collect paths from all three key collections
+      const allPaths = [
+        ...searchInKeyCollection(globalKeys, key, useFuzzy),
+        ...searchInKeyCollection(vueKeys, key, useFuzzy),
+        ...searchInKeyCollection(reactKeys, key, useFuzzy),
+      ];
 
-      if (fuzzy) {
-        const lowerKey = key.toLowerCase();
-        for (const _key of globalKeys.keys()) {
-          if (_key.toLowerCase().includes(lowerKey)) {
-            resultPaths.push(...toPaths(globalKeys.get(_key)));
-          }
-        }
-        for (const _key of vueKeys.keys()) {
-          if (_key.toLowerCase().includes(lowerKey)) {
-            resultPaths.push(...toPaths(vueKeys.get(_key)));
-          }
-        }
-        for (const _key of reactKeys.keys()) {
-          if (_key.toLowerCase().includes(lowerKey)) {
-            resultPaths.push(...toPaths(reactKeys.get(_key)));
-          }
-        }
-      } else {
-        // 此段代碼用於從不同的鍵集合中合併結果
-        resultPaths.push(
-          ...toPaths(globalKeys.get(key)),
-          ...toPaths(vueKeys.get(key)),
-          ...toPaths(reactKeys.get(key))
-        );
-      }
-      // 去重
-      const uniquePaths = Array.from(new Set(resultPaths));
+      // Deduplicate paths
+      const uniquePaths = Array.from(new Set(allPaths));
 
-      // 遍歷結果數組，將每個元素及其評估結果存入數據結果數組。
-      const evaluations = uniquePaths.map((element) => `return ${element}`);
-      const evaluatedCodes = evaluations.map((evalStr) => {
-        try {
-          return newEval(evalStr, false);
-        } catch {
-          return undefined;
-        }
-      });
+      // Evaluate paths and create results
+      const results: SearchResult[] = uniquePaths.map((path) => ({
+        path,
+        code: evaluatePathSafely(path),
+      }));
 
-      evaluatedCodes.forEach((code, index) => {
-        dataResult.push({ path: uniquePaths[index], code });
-      });
-
-      return dataResult.filter((item) => {
-        if (!item) return false;
-        if (typeof item.code === "function") {
-          const funcStr = String(item.code);
-          // 過濾原生函數
-          if (/\[native code\]/.test(funcStr)) return false;
-          return true;
-        }
-        return true;
-      });
+      // Filter out invalid results and native functions
+      return results.filter(isValidSearchResult);
     }
     // 將函數暴露到全域以便於在控制台或其他腳本中使用（避免覆蓋既有同名函數）
-    if (!window.$searchKey) {
-      window.$searchKey = $searchKey;
-      console.log(`$searchKey函數已注入！`, $searchKey);
-    } else {
-      console.log(`$searchKey 已存在，跳過重新注入。`);
-    }
+    (globalThis as any)[globalName] = $searchKey;
+    if (log) console.log(`${globalName} 函數已注入！`, $searchKey);
+    return { fn: $searchKey, globalKeys, vueKeys, reactKeys };
   } finally {
     // 清理隱藏 iframe，避免長駐 DOM
-    try {
-      iframe.remove();
-    } catch {
-      /* noop */
-    }
+    cleanup();
   }
-});
+}

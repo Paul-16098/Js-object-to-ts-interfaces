@@ -1,51 +1,176 @@
-# Js-object-to-ts-interfaces — TypeScript 介面生成器
+# js-object-to-ts-interfaces
 
-將任意 JavaScript 物件在「執行時」自動轉換成 TypeScript 介面定義（.d.ts）。
+將任意 JavaScript 物件於「執行時」自動轉換為 TypeScript 介面（.d.ts），支援事件擴展、全域/框架掛載搜尋與一鍵下載。
 
 ![ex](ex.png)
 
-## 為什麼用它？
+---
 
-- 遞迴解析：深度走訪物件並推斷屬性型別
-- 循環引用保護：遇到循環時輸出為 `any/* circular */`（可關閉提示）
-- 函數型別推斷：從 `toString()` 擷取參數列表，輸出 `(...args) => unknown`
-- 事件/策略擴展：以事件處理器模式（handlers）插拔式客製化流程
-- 內建特判：自動處理 jQuery（`$`/`jQuery`）與瀏覽器全域物件跳過
+## Technology Stack
+
+- **TypeScript** ^5.6.3
+- **JavaScript**（瀏覽器端）
+- **pnpm**（monorepo 套件管理）
+- **esbuild**（IIFE bundle 打包）
+- **rimraf**（清理工具）
+- **@types/jquery**（型別支援）
+
+---
+
+## Project Architecture
+
+- **事件驅動架構**：以 EventHandler pipeline 為核心，所有型別推斷與擴展都透過 handler 插拔實現。
+- **遞迴遍歷與循環保護**：遞迴走訪物件屬性，WeakSet 防止循環引用。
+- **Monorepo 結構**：
+  - Root：主型別生成邏輯（main.ts）
+  - @js-to-ts-interfaces/core：共用工具（isNativeFunction、isNumericKey、iframe、diffGlobalKeys）
+  - @js-to-ts-interfaces/search-key：注入 `$searchKey()`，支援全域/Vue/React 掛載搜尋
+- **IIFE 輸出**：所有模組最終以 IIFE 形式 bundle，方便 `<script>` 直接載入
+
+---
+
+## Getting Started
+
+### 安裝與建置
+
+```powershell
+pnpm i
+pnpm build           # 建置所有套件與主程式
+# 或分別建置
+pnpm build:core      # 只建 core
+pnpm build:searchKey # 只建 searchKey
+pnpm run build:root  # 只建 root
+```
+
+### 使用方式
+
+1. 將 `main.js` 複製貼到瀏覽器 Console。
+2. 產生介面範例：
+   ```ts
+   const gen = new GetTypeGenerator({ printHint: false, download: true });
+   gen.generate(window, "Window"); // 下載 Window.d.ts
+   ```
+3. 針對一般物件：
+   ```ts
+   const obj = { id: 1, name: "Alice", tags: ["a", "b"], fn: (x, y) => x + y };
+   const dts = new GetTypeGenerator({ download: false }).generate(obj, "User");
+   console.log(dts);
+   ```
+4. 從 API 回傳 JSON 生成介面：
+   ```ts
+   const data = await fetch("/api").then((r) => r.json());
+   new GetTypeGenerator().generate(data, "ApiResponse");
+   ```
+5. 注入 `$searchKey` 並搜尋全域/框架掛載點：
+   ```ts
+   await injectSearchKey();
+   const results = window.$searchKey!("store", true);
+   if (results.length) {
+     const targetObj = results[0].code;
+     const dts = new GetTypeGenerator({ download: false }).generate(
+       targetObj,
+       "Store",
+     );
+     console.log(dts);
+   }
+   ```
+
+---
+
+## Project Structure
+
+```
+.
+├── main.ts                # 主型別生成邏輯
+├── eventHandlers.ts       # 事件處理器擴展點與內建策略
+├── packages/
+│   ├── core/              # 共用核心工具
+│   │   └── main.ts
+│   └── searchKey/         # $searchKey 注入與全域/框架掛載搜尋
+│       └── main.ts
+├── package.json           # 根專案設定
+├── pnpm-workspace.yaml    # monorepo 套件管理
+├── tsconfig.base.json     # TypeScript 共用設定
+└── ...
+```
+
+---
+
+## Key Features
+
+- 遞迴型別推斷：自動深度走訪物件，推斷所有屬性型別
+- 循環引用保護：遇到循環時自動輸出 `any/* circular */`
+- 函數型別推斷：從 `toString()` 擷取參數，產生 `(...args) => unknown`
+- 事件/策略擴展：以 handler pipeline 插拔式自訂型別推斷流程
+- jQuery/全域特判：自動處理 `$`/`jQuery` 及常見瀏覽器全域物件跳過
 - 後處理管線：支援結果字串替換（如清理重複/冗餘片段）
-- 一鍵下載：根層呼叫完成時可自動下載 `.d.ts` 檔
+- 一鍵下載：根層呼叫時自動下載 `.d.ts` 檔
+- $searchKey 工具：可搜尋全域/Vue/React 掛載點後再生成介面，支援 fuzzy 搜尋
+- 自訂事件處理器：可擴充/覆寫事件處理器，實現自定義跳過、型別轉換等策略
+- IIFE 輸出：所有 bundle 可直接 `<script>` 載入瀏覽器
 
-## 快速開始
+---
 
-本工具為瀏覽器腳本，最直覺的用法是在任何頁面開啟開發者工具（F12）並於 Console 執行。
+## Development Workflow
 
-1. 將本專案的 `main.js` 內容複製貼到瀏覽器 Console。
-2. 執行以下範例：
+- `pnpm build`：遞迴建置所有套件與主程式
+- `pnpm build:core`、`pnpm build:searchKey`、`pnpm run build:root`：分別建置各子套件或 root
+- 修改 TypeScript 檔案後需重新 build
+- 測試可於瀏覽器 Console 載入 main.js
+- 事件處理器可自訂並以 `AddEventHandler()` 註冊，執行順序依註冊順序
+- 主要分支為 `main`，開發分支如 `dev`，PR 合併
 
-```ts
-// 產生當前網頁環境 Window 型別，並觸發下載 Window.d.ts
-const gen = new GetTypeGenerator({ printHint: false, download: true });
-gen.generate(window, "Window");
+---
 
-// 針對一般物件（不下載，只回傳字串）
-const obj = { id: 1, name: "Alice", tags: ["a", "b"], fn: (x, y) => x + y };
-const dts = new GetTypeGenerator({ download: false }).generate(obj, "User");
-console.log(dts);
-```
+## Coding Standards
 
-從 API 回傳 JSON 生成介面：
+- TypeScript/ESNext，嚴格型別檢查
+- 命名慣例：
+  - 常數：`SCREAMING_SNAKE_CASE`
+  - 型別：`PascalCase`
+  - 私有方法：`private` 關鍵字
+- import 僅用 path alias（`@js-to-ts-interfaces/core`），禁止跨 package 相對路徑
+- 只針對複雜邏輯、API、特殊正則等加註解，避免冗餘
+- 事件處理器 pipeline，僅遍歷自有屬性
 
-```ts
-const data = await fetch("/api").then((r) => r.json());
-new GetTypeGenerator().generate(data, "ApiResponse"); // 預設會觸發下載
-```
+---
 
-> 提示：若你使用 jQuery，建議在型別環境安裝 `@types/jquery`（本專案已列為 devDependency），以便產生 `JQueryStatic` 型別。
+## Testing
 
-## 功能與設計
+- 主要於瀏覽器 Console 載入 `main.js`，針對各種物件、API 回傳、全域變數等進行型別生成測試
+- 測試流程：
+  1. 複製 `main.js` 至瀏覽器 Console
+  2. 執行各種 `generate()` 測試案例
+- 可撰寫自訂 handler 測試型別生成流程
+- `pnpm build` 後確認 bundle 可於瀏覽器正常執行
+- （目前以手動驗證為主，未見自動化單元測試腳本）
+
+---
+
+## Contributing
+
+- 歡迎提出 Issue 或 PR，建議附上最小可重現範例與預期輸出
+- 自訂策略/事件處理器請以 `EventHandlerBase` 介面實作，並用 `AddEventHandler()` 註冊
+  - 範例：
+    ```ts
+    class SkipPrivate
+      implements EventHandlerBase<{ key: string; element: any }>
+    {
+      on = EventType.GetTypeTop;
+      do(env, arg) {
+        if (arg.key.startsWith("_")) return FnActions.Continue;
+        return FnActions.None;
+      }
+    }
+    const gen = new GetTypeGenerator({ download: false });
+    gen.AddEventHandler(new SkipPrivate());
+    ```
+- PR 請說明設計動機與使用情境，bugfix 請附重現步驟
+- 未來規劃：遞迴走訪與鍵蒐集將抽離至 core，降低重複維護
 
 - 深度遍歷：只遍歷自有屬性（`hasOwnProperty`）
 - 函數處理：
-  - 原生函數（`[native code]`）輸出為 `"native-code"` 並跳過屬性展開
+  - 原生函數（`[native code]`）輸出為 `null` 並跳過屬性展開
   - 一般函數：由 `toString()` 擷取 `(...) => unknown`
 - 陣列偵測：若鍵名全為數字，會在 `printHint` 模式下附註「可能是 Array」
 - jQuery 特判：
@@ -79,7 +204,7 @@ class GetTypeGenerator {
   get EventHandlerList(): EventHandlerBase<EventHandlerArgType>[];
   set EventHandlerList(list: EventHandlerBase<EventHandlerArgType>[]);
   AddEventHandler(
-    h: EventHandlerBase<EventHandlerArgType>
+    h: EventHandlerBase<EventHandlerArgType>,
   ): EventHandlerBase<EventHandlerArgType>[];
 }
 
@@ -114,7 +239,7 @@ interface EventHandlerBase<EventArg extends EventHandlerArgType> {
       depth: number;
       path: string[];
     },
-    arg: EventArg
+    arg: EventArg,
   ): EventHandlerReturn;
 }
 ```
@@ -167,8 +292,18 @@ pnpm i
 npx tsc -p tsconfig.json
 ```
 
+多套件（monorepo）建置：
+
+```powershell
+pnpm build           # 遞迴編譯 core / search-key / root
+pnpm build:core      # 只編譯共用核心工具
+pnpm build:searchKey # 只編譯搜尋鍵工具
+```
+
 編譯成功後，瀏覽器端直接以 `<script src="./main.js"></script>` 載入即可。
 
 ## 貢獻
 
 歡迎提出 Issue 或 PR。若要提交策略／處理器，請附上最小可重現範例與預期輸出。
+
+若要增强 `$searchKey` 與介面生成整合（例如直接選路徑自動生成介面），歡迎提出新功能需求。未來規劃將把遞迴走訪與鍵蒐集的共通程式抽離到 `@js-to-ts-interfaces/core` 中，降低重複維護成本。

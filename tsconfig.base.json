@@ -1,12 +1,16 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "commonjs",
+    "target": "ES2015",
+    "module": "ES2015",
     "lib": ["ESNext", "DOM"],
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "paths": {
+      "@js-to-ts-interfaces/core": ["./packages/core/main.ts"]
+    }
   }
 }

@@ -4,6 +4,6 @@
   "readme": "./README.md",
   "homepage": "https://github.com/Paul-16098/Js-object-to-ts-interfaces/",
   "devDependencies": {
-    "@types/jquery": "^3.5.32"
+    "@types/jquery": "^4.0.0"
   }
 }
